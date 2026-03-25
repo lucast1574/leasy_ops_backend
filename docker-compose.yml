@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=leasy_ops
+      - POSTGRES_USER=leasy_user
+      - POSTGRES_PASSWORD=leasy_pass
+
+  api:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=django-insecure-dev-key
+      - DATABASE_URL=postgres://leasy_user:leasy_pass@db:5432/leasy_ops
+      - ALLOWED_HOSTS=localhost,127.0.0.1,api
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
