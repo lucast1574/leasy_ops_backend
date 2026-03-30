@@ -1,0 +1,9 @@
+services:
+  api:
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=True
+    ports:
+      - "8000:8000"

@@ -1,27 +1,39 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: leasy_ops_db
+    restart: always
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
-      - POSTGRES_DB=leasy_ops
-      - POSTGRES_USER=leasy_user
-      - POSTGRES_PASSWORD=leasy_pass
+      - POSTGRES_DB=${DATABASE_NAME:-leasy_ops}
+      - POSTGRES_USER=${DATABASE_USER:-leasy_user}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD:-leasy_pass}
+    networks:
+      - leasy_network
 
   api:
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    container_name: leasy_ops_api
+    restart: always
+    command: gunicorn --bind 0.0.0.0:8000 core.wsgi:application
     volumes:
-      - .:/app
+      - ./media:/app/media
+      - ./staticfiles:/app/staticfiles
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      - DEBUG=True
-      - SECRET_KEY=django-insecure-dev-key
-      - DATABASE_URL=postgres://leasy_user:leasy_pass@db:5432/leasy_ops
-      - ALLOWED_HOSTS=localhost,127.0.0.1,api
+      - DATABASE_URL=postgres://${DATABASE_USER:-leasy_user}:${DATABASE_PASSWORD:-leasy_pass}@db:5432/${DATABASE_NAME:-leasy_ops}
     depends_on:
       - db
+    networks:
+      - leasy_network
+
+networks:
+  leasy_network:
+    driver: bridge
 
 volumes:
   postgres_data:

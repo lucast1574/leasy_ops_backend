@@ -6,12 +6,11 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from core.views import HealthCheckView
+
 api_v1_urlpatterns = [
-    path('users/', include('apps.users.urls', namespace='users')),
-    path('verifications/', include('apps.verifications.urls', namespace='verifications')),
-    path('vehicles/', include('apps.vehicles.urls', namespace='vehicles')),
-    path('notary/', include('apps.notary.urls', namespace='notary')),
-    path('logistics/', include('apps.logistics.urls', namespace='logistics')),
+    path('users/', include('apps.users.urls')),
+    path('health/', HealthCheckView.as_view(), name='health-check'),
 ]
 
 urlpatterns = [
