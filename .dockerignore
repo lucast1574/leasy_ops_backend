@@ -1,18 +1,22 @@
-.git
-.gitignore
-venv
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.db.sqlite3
-db.sqlite3
-media
-staticfiles
-Dockerfile
-docker-compose.yml
-docker-compose.prod.yml
+# Git
+.git/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Environment Variables
 .env
-.env.production
-.vscode
-*.log
+.env.local
+
+# Python files
+__pycache__/
+*.py[cod]
+*$py.class
+*.sqlite3
+
+# Docker
+Dockerfile
+.dockerignore
