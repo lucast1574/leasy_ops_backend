@@ -1,5 +1,5 @@
-from django.contrib.auth import get_user_model
-from django.shortcuts import render
+import os
+import requests as http_requests
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -7,89 +7,113 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-import os
+from django.contrib.auth import get_user_model
 
 from .models import Country, City, Role
 from .serializers import (
     UserSerializer, AssignRoleSerializer,
-    CountrySerializer, CitySerializer
+    CountrySerializer, CitySerializer, RoleSerializer,
 )
 
 User = get_user_model()
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
 
-DOMAIN_TO_COUNTRY_CODE = {
+DOMAIN_TO_COUNTRY = {
     'leasyauto.com': 'PE',
     'floty.mx': 'MX',
 }
 
 
-def _get_tokens_for_user(user):
-    refresh = RefreshToken.for_user(user)
+def _get_email_from_id_token(token_str):
+    """Verify a Google ID token and return user info dict."""
+    idinfo = id_token.verify_oauth2_token(
+        token_str, google_requests.Request(), GOOGLE_CLIENT_ID
+    )
     return {
-        'refresh': str(refresh),
-        'access': str(refresh.access_token),
+        'email': idinfo.get('email', '').lower(),
+        'first_name': idinfo.get('given_name', ''),
+        'last_name': idinfo.get('family_name', ''),
     }
 
 
-def _domain_from_email(email):
-    """Extract domain from an email address."""
-    parts = email.split('@')
-    if len(parts) != 2:
-        return None
-    return parts[1].lower()
+def _get_email_from_auth_code(code):
+    """Exchange a Google authorization code for tokens, then get user info."""
+    # Exchange code for tokens
+    token_resp = http_requests.post('https://oauth2.googleapis.com/token', data={
+        'code': code,
+        'client_id': GOOGLE_CLIENT_ID,
+        'client_secret': GOOGLE_CLIENT_SECRET,
+        'redirect_uri': 'postmessage',  # Required for popup flow
+        'grant_type': 'authorization_code',
+    })
+    if token_resp.status_code != 200:
+        raise ValueError(f'Failed to exchange code: {token_resp.text}')
+
+    token_data = token_resp.json()
+    id_token_str = token_data.get('id_token')
+    if not id_token_str:
+        raise ValueError('No id_token in response')
+
+    # Verify the ID token we got from the exchange
+    idinfo = id_token.verify_oauth2_token(
+        id_token_str, google_requests.Request(), GOOGLE_CLIENT_ID
+    )
+    return {
+        'email': idinfo.get('email', '').lower(),
+        'first_name': idinfo.get('given_name', ''),
+        'last_name': idinfo.get('family_name', ''),
+    }
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def google_auth(request):
     """
-    Google OAuth login / register.
-
-    Body:
-        token     (str)  - Google ID token
-        source    (str)  - 'mobile' or 'backoffice'
-        city_id   (int, optional) - City pk to assign on registration
+    Google OAuth login/register.
+    Accepts either:
+      - token (str): Google ID token (from mobile app)
+      - code (str): Google authorization code (from backoffice popup)
+    Also:
+      - source (str): 'mobile' or 'backoffice'
+      - city_id (int, optional): City to assign on registration
     """
     token = request.data.get('token')
+    code = request.data.get('code')
     source = request.data.get('source', 'mobile')
     city_id = request.data.get('city_id')
 
-    if not token:
-        return Response({'error': 'token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not token and not code:
+        return Response({'error': 'Se requiere token o code'}, status=status.HTTP_400_BAD_REQUEST)
 
     if source not in ('mobile', 'backoffice'):
-        return Response({'error': "source must be 'mobile' or 'backoffice'."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'source debe ser "mobile" o "backoffice"'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Verify the Google ID token
+    # Get user info from Google
     try:
-        idinfo = id_token.verify_oauth2_token(
-            token,
-            google_requests.Request(),
-            GOOGLE_CLIENT_ID
-        )
+        if token:
+            google_user = _get_email_from_id_token(token)
+        else:
+            google_user = _get_email_from_auth_code(code)
     except ValueError as e:
-        return Response({'error': f'Invalid token: {str(e)}'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'error': 'Token inválido', 'details': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
-    email = idinfo.get('email', '').lower()
-    first_name = idinfo.get('given_name', '')
-    last_name = idinfo.get('family_name', '')
+    email = google_user['email']
+    first_name = google_user['first_name']
+    last_name = google_user['last_name']
 
-    # Domain validation
-    domain = _domain_from_email(email)
-    country_code = DOMAIN_TO_COUNTRY_CODE.get(domain)
+    # Validate domain
+    domain = email.split('@')[1] if '@' in email else ''
+    country_code = DOMAIN_TO_COUNTRY.get(domain)
     if not country_code:
         return Response(
-            {'error': 'Email domain not authorized. Only leasyauto.com and floty.mx are allowed.'},
+            {'error': 'Dominio no permitido. Solo se aceptan correos de leasyauto.com y floty.mx'},
             status=status.HTTP_403_FORBIDDEN
         )
 
     # Resolve country
-    try:
-        country = Country.objects.get(code=country_code)
-    except Country.DoesNotExist:
-        return Response({'error': 'Country not configured in database.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    country = Country.objects.filter(code=country_code).first()
 
     # Resolve optional city
     city = None
@@ -97,25 +121,25 @@ def google_auth(request):
         try:
             city = City.objects.get(id=city_id, country=country)
         except City.DoesNotExist:
-            return Response({'error': 'City not found or does not belong to the user country.'}, status=status.HTTP_400_BAD_REQUEST)
+            pass
 
     # Get or create user
-    created = False
+    is_new = False
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
-        created = True
+        is_new = True
+        # Generate unique username
         username = email.split('@')[0]
-        # Ensure username uniqueness
-        base_username = username
+        base = username
         counter = 1
         while User.objects.filter(username=username).exists():
-            username = f"{base_username}{counter}"
+            username = f"{base}{counter}"
             counter += 1
 
         user = User(
-            username=username,
             email=email,
+            username=username,
             first_name=first_name,
             last_name=last_name,
             country=country,
@@ -124,58 +148,96 @@ def google_auth(request):
         )
 
         if source == 'mobile':
-            try:
-                operario_role = Role.objects.get(name='operario')
-            except Role.DoesNotExist:
-                return Response({'error': 'Operario role not configured in database.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            user.role = operario_role
+            operario = Role.objects.filter(name='operario').first()
+            user.role = operario
             user.is_approved = True
         else:
-            # backoffice - pending approval
             user.role = None
             user.is_approved = False
 
         user.set_unusable_password()
         user.save()
 
-    tokens = _get_tokens_for_user(user)
+    # Update country/city if not set
+    if not is_new:
+        changed = False
+        if not user.country and country:
+            user.country = country
+            changed = True
+        if not user.city and city:
+            user.city = city
+            changed = True
+        if changed:
+            user.save()
 
-    response_data = {
-        'tokens': tokens,
+    # Check access
+    if source == 'backoffice':
+        if not user.is_approved or not user.role:
+            return Response({
+                'status': 'pending_approval',
+                'message': 'Tu cuenta está pendiente de asignación de rol',
+                'user': UserSerializer(user).data,
+            })
+
+        if not user.has_perm_code('backoffice_access'):
+            return Response({
+                'status': 'no_access',
+                'message': 'Tu rol no tiene acceso al backoffice. Solo puedes usar la app móvil.',
+                'user': UserSerializer(user).data,
+            })
+
+    if source == 'mobile':
+        if not user.is_approved:
+            return Response({'error': 'Tu cuenta está pendiente de aprobación'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+    # Generate JWT
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'status': 'ok',
+        'token': str(refresh.access_token),
+        'refresh': str(refresh),
         'user': UserSerializer(user).data,
-    }
+    })
 
-    if created and source == 'backoffice' and not user.is_approved:
-        response_data['message'] = 'Your account is pending role assignment by an administrator.'
-        response_data['status'] = 'pending_approval'
 
-    return Response(response_data, status=status.HTTP_200_OK)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def check_user_status(request):
+    """Public endpoint to check if a user has been approved (for polling)."""
+    email = request.query_params.get('email')
+    if not email:
+        return Response({'error': 'email requerido'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        user = User.objects.get(email=email)
+        return Response({
+            'is_approved': user.is_approved,
+            'has_backoffice_access': user.has_perm_code('backoffice_access') if user.role else False,
+            'role': user.role.name if user.role else None,
+        })
+    except User.DoesNotExist:
+        return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def me(request):
-    """Return current authenticated user's full profile."""
-    serializer = UserSerializer(request.user)
-    return Response(serializer.data)
+    return Response(UserSerializer(request.user).data)
 
 
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
 def update_user_city(request):
-    """Authenticated user updates their own city."""
     city_id = request.data.get('city_id')
     if not city_id:
-        return Response({'error': 'city_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
+        return Response({'error': 'city_id requerido'}, status=status.HTTP_400_BAD_REQUEST)
     try:
         city = City.objects.get(id=city_id)
     except City.DoesNotExist:
-        return Response({'error': 'City not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Ciudad no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Optionally: validate city belongs to user's country
     if request.user.country and city.country != request.user.country:
-        return Response({'error': 'City does not belong to your country.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'La ciudad no pertenece a tu país'}, status=status.HTTP_400_BAD_REQUEST)
 
     request.user.city = city
     request.user.save(update_fields=['city'])
@@ -185,89 +247,63 @@ def update_user_city(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_users(request):
-    """List all users. Requires manage_users permission."""
-    if not request.user.has_app_permission('manage_users'):
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
-    users = User.objects.select_related('role', 'country', 'city').prefetch_related('role__permissions').all()
-    serializer = UserSerializer(users, many=True)
-    return Response(serializer.data)
+    if not request.user.has_perm_code('manage_users'):
+        return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
+    users = User.objects.select_related('role', 'country', 'city').prefetch_related('role__permissions').all().order_by('-date_joined')
+    return Response(UserSerializer(users, many=True).data)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def assign_role(request, user_id):
-    """
-    POST /users/backoffice/<user_id>/assign-role/
+    if request.user.id == user_id:
+        return Response({'error': 'No puedes cambiar tu propio rol'}, status=status.HTTP_400_BAD_REQUEST)
 
-    Admins can assign any role.
-    Supervisors can only assign "operario".
-    Cannot change own role.
-    """
-    requester = request.user
-
-    # Cannot change own role
-    if requester.id == user_id:
-        return Response({'error': 'You cannot change your own role.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Must have at least assign_operario_role permission
-    if not requester.has_app_permission('assign_operario_role'):
-        return Response({'error': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+    if not request.user.has_perm_code('assign_operario_role'):
+        return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
 
     try:
-        target_user = User.objects.get(id=user_id)
+        target = User.objects.get(id=user_id)
     except User.DoesNotExist:
-        return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
     serializer = AssignRoleSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.is_valid(raise_exception=True)
 
-    role_id = serializer.validated_data['role_id']
-    try:
-        new_role = Role.objects.get(id=role_id)
-    except Role.DoesNotExist:
-        return Response({'error': 'Role not found.'}, status=status.HTTP_404_NOT_FOUND)
+    new_role = Role.objects.get(id=serializer.validated_data['role_id'])
 
-    # Supervisors can only assign 'operario'
-    if not requester.has_app_permission('assign_supervisor_role'):
-        if new_role.name != 'operario':
-            return Response(
-                {'error': 'Supervisors can only assign the operario role.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+    # Permission checks
+    if new_role.name == 'admin' and not request.user.has_perm_code('manage_all_roles'):
+        return Response({'error': 'Solo admins pueden asignar rol admin'}, status=status.HTTP_403_FORBIDDEN)
+    if new_role.name == 'supervisor' and not request.user.has_perm_code('assign_supervisor_role'):
+        return Response({'error': 'No tienes permiso para asignar supervisor'}, status=status.HTTP_403_FORBIDDEN)
 
-    target_user.role = new_role
-    target_user.is_approved = True
-    target_user.save(update_fields=['role', 'is_approved'])
-
-    return Response(UserSerializer(target_user).data)
+    target.role = new_role
+    target.is_approved = True
+    target.save(update_fields=['role', 'is_approved'])
+    return Response(UserSerializer(target).data)
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_countries(request):
-    """Public endpoint - list all countries."""
-    countries = Country.objects.all()
-    serializer = CountrySerializer(countries, many=True)
-    return Response(serializer.data)
+    return Response(CountrySerializer(Country.objects.all(), many=True).data)
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_cities(request):
-    """
-    Public endpoint - list cities.
-    Optional query param: ?country_id=<id> or ?country_code=<PE|MX>
-    """
     cities = City.objects.select_related('country').all()
     country_id = request.query_params.get('country_id')
     country_code = request.query_params.get('country_code')
-
     if country_id:
         cities = cities.filter(country_id=country_id)
     elif country_code:
         cities = cities.filter(country__code=country_code.upper())
+    return Response(CitySerializer(cities, many=True).data)
 
-    serializer = CitySerializer(cities, many=True)
-    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_roles(request):
+    return Response(RoleSerializer(Role.objects.prefetch_related('permissions').all(), many=True).data)

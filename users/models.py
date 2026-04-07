@@ -57,7 +57,7 @@ class RolePermission(models.Model):
         unique_together = ('role', 'permission')
 
     def __str__(self):
-        return f"{self.role.name} → {self.permission.codename}"
+        return f"{self.role.name} -> {self.permission.codename}"
 
 
 class User(AbstractUser):
@@ -89,7 +89,11 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
-    def has_app_permission(self, codename):
+    def has_perm_code(self, codename):
+        """Check if user's role has a specific permission codename."""
         if self.role is None:
             return False
         return self.role.has_permission(codename)
+
+    # Alias for compatibility
+    has_app_permission = has_perm_code

@@ -1,24 +1,22 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
-
-from . import views
+from .views import (
+    google_auth, me, update_user_city, list_users, assign_role,
+    list_countries, list_cities, list_roles, check_user_status,
+)
 
 urlpatterns = [
     # Auth
-    path('auth/google/', views.google_auth, name='google_auth'),
-    path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/google/', google_auth, name='google-auth'),
+    path('me/', me, name='me'),
+    path('me/city/', update_user_city, name='update-my-city'),
+    path('check-status/', check_user_status, name='check-status'),
 
-    # User profile
-    path('me/', views.me, name='me'),
-    path('me/city/', views.update_user_city, name='update_user_city'),
+    # Backoffice
+    path('backoffice/list/', list_users, name='list-users'),
+    path('backoffice/<int:user_id>/assign-role/', assign_role, name='assign-role'),
 
-    # User management (requires manage_users permission)
-    path('users/', views.list_users, name='list_users'),
-
-    # Role assignment (backoffice)
-    path('backoffice/<int:user_id>/assign-role/', views.assign_role, name='assign_role'),
-
-    # Public reference data
-    path('countries/', views.list_countries, name='list_countries'),
-    path('cities/', views.list_cities, name='list_cities'),
+    # Public
+    path('countries/', list_countries, name='list-countries'),
+    path('cities/', list_cities, name='list-cities'),
+    path('roles/', list_roles, name='list-roles'),
 ]
