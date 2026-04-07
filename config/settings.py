@@ -12,15 +12,24 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-))q6l&8(#fszik=4ybfb9x1h+h+fo0wm*vqz4o7%h6^kjwss(!')
+# SECURITY: SECRET_KEY must be set in environment variables for production.
+# If not set, Django will refuse to start in production (DEBUG=False).
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if os.environ.get('DEBUG') == 'True':
+        SECRET_KEY = 'django-insecure-dev-only-key-do-not-use-in-production'
+    else:
+        raise ValueError('SECRET_KEY environment variable is required in production')
 
 # DEBUG debe ser False en producción (AWS)
 DEBUG = os.environ.get('DEBUG') == 'True'
 
-# CAMBIO CRUCIAL: Permitimos '*' para que el Load Balancer de AWS pueda entrar.
-# Sin esto, AWS recibe un error 400/403 y te lanza el 503 Service Unavailable.
-ALLOWED_HOSTS = ['*']
+# ALLOWED_HOSTS: dominios reales + health check interno del ALB
+# Configurable via env var. Incluye ALB hostname para health checks.
+ALLOWED_HOSTS = os.environ.get(
+    'ALLOWED_HOSTS',
+    'django-backend-alb-290863292.us-east-2.elb.amazonaws.com,api.leasyauto.com,localhost,127.0.0.1'
+).split(',')
 
 # Application definition
 INSTALLED_APPS = [
@@ -110,7 +119,7 @@ REST_FRAMEWORK = {
 
 # Configuración de CORS para el Frontend
 CORS_ALLOWED_ORIGINS = os.environ.get(
-    'CORS_ALLOWED_ORIGINS', 
+    'CORS_ALLOWED_ORIGINS',
     'http://localhost:3000,http://localhost:5173,https://opps-app.leasyauto.com'
 ).split(',')
 

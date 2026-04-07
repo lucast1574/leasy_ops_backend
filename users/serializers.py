@@ -1,9 +1,53 @@
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
+from .models import User, Role, Permission, Country, City
 
-User = get_user_model()
+
+class PermissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Permission
+        fields = ['id', 'codename', 'description']
+
+
+class RoleSerializer(serializers.ModelSerializer):
+    permissions = PermissionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Role
+        fields = ['id', 'name', 'description', 'permissions']
+
+
+class CountrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Country
+        fields = ['id', 'name', 'code', 'domain_suffix']
+
+
+class CitySerializer(serializers.ModelSerializer):
+    country = CountrySerializer(read_only=True)
+
+    class Meta:
+        model = City
+        fields = ['id', 'name', 'country']
+
 
 class UserSerializer(serializers.ModelSerializer):
+    role = RoleSerializer(read_only=True)
+    country = CountrySerializer(read_only=True)
+    city = CitySerializer(read_only=True)
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_approved', 'has_backoffice_access']
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'role', 'country', 'city', 'is_approved', 'registered_from',
+            'is_staff', 'is_superuser', 'date_joined',
+        ]
+
+
+class AssignRoleSerializer(serializers.Serializer):
+    role_id = serializers.IntegerField()
+
+    def validate_role_id(self, value):
+        if not Role.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Role not found.")
+        return value
