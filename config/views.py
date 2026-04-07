@@ -6,5 +6,3 @@ def health_check(request):
     Retorna 200 OK inmediatamente.
     """
     return JsonResponse({"status": "ok", "message": "Backend is running"})
-
-
