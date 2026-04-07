@@ -111,8 +111,7 @@ REST_FRAMEWORK = {
 # Configuración de CORS para el Frontend
 CORS_ALLOWED_ORIGINS = os.environ.get(
     'CORS_ALLOWED_ORIGINS', 
-    'http://localhost:3000,http://localhost:5173',
-    'opps-app.leasyauto.com'
+    'http://localhost:3000,http://localhost:5173,https://opps-app.leasyauto.com'
 ).split(',')
 
 # Para que las cookies funcionen tras el Load Balancer
