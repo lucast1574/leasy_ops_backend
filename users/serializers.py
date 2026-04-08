@@ -34,14 +34,21 @@ class UserSerializer(serializers.ModelSerializer):
     role = RoleSerializer(read_only=True)
     country = CountrySerializer(read_only=True)
     city = CitySerializer(read_only=True)
+    permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'role', 'country', 'city', 'is_approved', 'registered_from',
-            'is_staff', 'is_superuser', 'date_joined',
+            'profile_picture', 'is_staff', 'is_superuser', 'date_joined',
+            'permissions',
         ]
+
+    def get_permissions(self, obj):
+        if obj.role and obj.role.permissions.exists():
+            return list(obj.role.permissions.values_list('codename', flat=True))
+        return []
 
 
 class AssignRoleSerializer(serializers.Serializer):

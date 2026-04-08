@@ -1,7 +1,7 @@
 import os
 import requests as http_requests
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -17,8 +17,13 @@ from .serializers import (
 
 User = get_user_model()
 
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')  # Web client ID (backoffice)
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_WEB_CLIENT_ID = os.environ.get('GOOGLE_WEB_CLIENT_ID', '')  # Web client ID (general/mobile web)
+GOOGLE_ANDROID_CLIENT_ID = os.environ.get('GOOGLE_ANDROID_CLIENT_ID', '')  # Android client ID
+
+# All valid client IDs that can appear as 'aud' in Google ID tokens
+VALID_CLIENT_IDS = [cid for cid in [GOOGLE_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID] if cid]
 
 DOMAIN_TO_COUNTRY = {
     'leasyauto.com': 'PE',
@@ -27,15 +32,23 @@ DOMAIN_TO_COUNTRY = {
 
 
 def _get_email_from_id_token(token_str):
-    """Verify a Google ID token and return user info dict."""
-    idinfo = id_token.verify_oauth2_token(
-        token_str, google_requests.Request(), GOOGLE_CLIENT_ID
-    )
-    return {
-        'email': idinfo.get('email', '').lower(),
-        'first_name': idinfo.get('given_name', ''),
-        'last_name': idinfo.get('family_name', ''),
-    }
+    """Verify a Google ID token. Accepts tokens for Web or Android client IDs."""
+    last_error = None
+    for client_id in VALID_CLIENT_IDS:
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                token_str, google_requests.Request(), client_id
+            )
+            return {
+                'email': idinfo.get('email', '').lower(),
+                'first_name': idinfo.get('given_name', ''),
+                'last_name': idinfo.get('family_name', ''),
+                'picture': idinfo.get('picture', ''),
+            }
+        except ValueError as e:
+            last_error = e
+            continue
+    raise ValueError(f'Token verification failed: {last_error}')
 
 
 def _get_email_from_auth_code(code):
@@ -64,10 +77,12 @@ def _get_email_from_auth_code(code):
         'email': idinfo.get('email', '').lower(),
         'first_name': idinfo.get('given_name', ''),
         'last_name': idinfo.get('family_name', ''),
+        'picture': idinfo.get('picture', ''),
     }
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def google_auth(request):
     """
@@ -97,11 +112,12 @@ def google_auth(request):
         else:
             google_user = _get_email_from_auth_code(code)
     except ValueError as e:
-        return Response({'error': 'Token inválido', 'details': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'error': 'Token invalido', 'details': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
     email = google_user['email']
     first_name = google_user['first_name']
     last_name = google_user['last_name']
+    picture = google_user.get('picture', '')
 
     # Validate domain
     domain = email.split('@')[1] if '@' in email else ''
@@ -142,6 +158,7 @@ def google_auth(request):
             username=username,
             first_name=first_name,
             last_name=last_name,
+            profile_picture=picture,
             country=country,
             city=city,
             registered_from=source,
@@ -158,7 +175,7 @@ def google_auth(request):
         user.set_unusable_password()
         user.save()
 
-    # Update country/city if not set
+    # Update profile data on each login
     if not is_new:
         changed = False
         if not user.country and country:
@@ -166,6 +183,15 @@ def google_auth(request):
             changed = True
         if not user.city and city:
             user.city = city
+            changed = True
+        if picture and user.profile_picture != picture:
+            user.profile_picture = picture
+            changed = True
+        if first_name and user.first_name != first_name:
+            user.first_name = first_name
+            changed = True
+        if last_name and user.last_name != last_name:
+            user.last_name = last_name
             changed = True
         if changed:
             user.save()
@@ -175,20 +201,20 @@ def google_auth(request):
         if not user.is_approved or not user.role:
             return Response({
                 'status': 'pending_approval',
-                'message': 'Tu cuenta está pendiente de asignación de rol',
+                'message': 'Tu cuenta esta pendiente de asignacion de rol',
                 'user': UserSerializer(user).data,
             })
 
         if not user.has_perm_code('backoffice_access'):
             return Response({
                 'status': 'no_access',
-                'message': 'Tu rol no tiene acceso al backoffice. Solo puedes usar la app móvil.',
+                'message': 'Tu rol no tiene acceso al backoffice. Solo puedes usar la app movil.',
                 'user': UserSerializer(user).data,
             })
 
     if source == 'mobile':
         if not user.is_approved:
-            return Response({'error': 'Tu cuenta está pendiente de aprobación'},
+            return Response({'error': 'Tu cuenta esta pendiente de aprobacion'},
                             status=status.HTTP_403_FORBIDDEN)
 
     # Generate JWT
@@ -202,6 +228,7 @@ def google_auth(request):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def check_user_status(request):
     """Public endpoint to check if a user has been approved (for polling)."""
@@ -237,7 +264,7 @@ def update_user_city(request):
         return Response({'error': 'Ciudad no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.user.country and city.country != request.user.country:
-        return Response({'error': 'La ciudad no pertenece a tu país'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'La ciudad no pertenece a tu pais'}, status=status.HTTP_400_BAD_REQUEST)
 
     request.user.city = city
     request.user.save(update_fields=['city'])
@@ -285,12 +312,14 @@ def assign_role(request, user_id):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def list_countries(request):
     return Response(CountrySerializer(Country.objects.all(), many=True).data)
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def list_cities(request):
     cities = City.objects.select_related('country').all()
@@ -304,6 +333,7 @@ def list_cities(request):
 
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def list_roles(request):
     return Response(RoleSerializer(Role.objects.prefetch_related('permissions').all(), many=True).data)

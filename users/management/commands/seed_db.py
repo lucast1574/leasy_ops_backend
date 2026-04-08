@@ -76,7 +76,7 @@ class Command(BaseCommand):
                 defaults={'name': c['name'], 'domain_suffix': c['domain_suffix']}
             )
             country_map[c['code']] = obj
-            status = '✓ Created' if created else '  Exists'
+            status = 'OK Created' if created else '  Exists'
             self.stdout.write(f"{status}: Country {obj.name}")
 
         # --- Cities ---
@@ -89,7 +89,7 @@ class Command(BaseCommand):
                     country=country
                 )
                 city_map[city_name] = obj
-                status = '✓ Created' if created else '  Exists'
+                status = 'OK Created' if created else '  Exists'
                 self.stdout.write(f"{status}: City {obj.name} ({country.name})")
 
         # --- Permissions ---
@@ -100,7 +100,7 @@ class Command(BaseCommand):
                 defaults={'description': p['description']}
             )
             perm_map[p['codename']] = obj
-            status = '✓ Created' if created else '  Exists'
+            status = 'OK Created' if created else '  Exists'
             self.stdout.write(f"{status}: Permission {obj.codename}")
 
         # --- Roles ---
@@ -111,7 +111,7 @@ class Command(BaseCommand):
                 defaults={'description': role_data['description']}
             )
             role_map[role_name] = role
-            status = '✓ Created' if created else '  Exists'
+            status = 'OK Created' if created else '  Exists'
             self.stdout.write(f"{status}: Role {role.name}")
 
             for perm_codename in role_data['permissions']:
@@ -120,7 +120,7 @@ class Command(BaseCommand):
                     role=role, permission=perm
                 )
                 if rp_created:
-                    self.stdout.write(f"  → Assigned permission: {perm_codename}")
+                    self.stdout.write(f"    + Assigned permission: {perm_codename}")
 
         # --- Admin user ---
         admin_country = country_map[ADMIN_USER['country_code']]
@@ -145,7 +145,7 @@ class Command(BaseCommand):
         if created:
             user.set_unusable_password()
             user.save()
-            self.stdout.write(self.style.SUCCESS(f'✓ Created admin user: {user.email}'))
+            self.stdout.write(self.style.SUCCESS(f'OK Created admin user: {user.email}'))
         else:
             # Ensure existing admin has correct flags
             changed = False

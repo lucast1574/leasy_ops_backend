@@ -123,5 +123,14 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     'http://localhost:3000,http://localhost:5173,https://opps-app.leasyauto.com'
 ).split(',')
 
+# JWT token lifetime
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=365),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=365),
+    'ROTATE_REFRESH_TOKENS': False,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
 # Para que las cookies funcionen tras el Load Balancer
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

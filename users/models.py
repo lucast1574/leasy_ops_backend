@@ -79,6 +79,7 @@ class User(AbstractUser):
         null=True, blank=True, related_name='users'
     )
     is_approved = models.BooleanField(default=False)
+    profile_picture = models.URLField(max_length=500, blank=True, default='')
     registered_from = models.CharField(
         max_length=20,
         choices=REGISTERED_FROM_CHOICES,
