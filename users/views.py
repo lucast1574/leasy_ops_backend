@@ -51,13 +51,22 @@ def _get_email_from_id_token(token_str):
     raise ValueError(f'Token verification failed: {last_error}')
 
 
+# Client ID/Secret pairs for code exchange (backoffice uses WEB_CLIENT_ID if available)
+BACKOFFICE_CLIENT_ID = GOOGLE_WEB_CLIENT_ID or GOOGLE_CLIENT_ID
+BACKOFFICE_CLIENT_SECRET = os.environ.get('GOOGLE_WEB_CLIENT_SECRET', '') or GOOGLE_CLIENT_SECRET
+
+
 def _get_email_from_auth_code(code):
     """Exchange a Google authorization code for tokens, then get user info."""
+    # Use the backoffice client ID for code exchange (matches frontend initCodeClient)
+    exchange_client_id = BACKOFFICE_CLIENT_ID
+    exchange_client_secret = BACKOFFICE_CLIENT_SECRET
+
     # Exchange code for tokens
     token_resp = http_requests.post('https://oauth2.googleapis.com/token', data={
         'code': code,
-        'client_id': GOOGLE_CLIENT_ID,
-        'client_secret': GOOGLE_CLIENT_SECRET,
+        'client_id': exchange_client_id,
+        'client_secret': exchange_client_secret,
         'redirect_uri': 'postmessage',  # Required for popup flow
         'grant_type': 'authorization_code',
     })
@@ -71,7 +80,7 @@ def _get_email_from_auth_code(code):
 
     # Verify the ID token we got from the exchange
     idinfo = id_token.verify_oauth2_token(
-        id_token_str, google_requests.Request(), GOOGLE_CLIENT_ID
+        id_token_str, google_requests.Request(), exchange_client_id
     )
     return {
         'email': idinfo.get('email', '').lower(),
