@@ -1,6 +1,9 @@
 import os
+import logging
 import requests as http_requests
 from rest_framework import status
+
+logger = logging.getLogger(__name__)
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -63,13 +66,22 @@ def _get_email_from_auth_code(code):
     exchange_client_secret = BACKOFFICE_CLIENT_SECRET
 
     # Exchange code for tokens
-    token_resp = http_requests.post('https://oauth2.googleapis.com/token', data={
-        'code': code,
-        'client_id': exchange_client_id,
-        'client_secret': exchange_client_secret,
-        'redirect_uri': 'postmessage',  # Required for popup flow
-        'grant_type': 'authorization_code',
-    })
+    logger.info(f'[OAUTH] Starting code exchange with client_id={exchange_client_id[:20]}...')
+    try:
+        token_resp = http_requests.post('https://oauth2.googleapis.com/token', data={
+            'code': code,
+            'client_id': exchange_client_id,
+            'client_secret': exchange_client_secret,
+            'redirect_uri': 'postmessage',  # Required for popup flow
+            'grant_type': 'authorization_code',
+        }, timeout=15)
+        logger.info(f'[OAUTH] Google token response: status={token_resp.status_code}')
+    except http_requests.exceptions.Timeout:
+        logger.error('[OAUTH] Timeout calling Google token endpoint')
+        raise ValueError('Google token exchange timed out after 15s')
+    except http_requests.exceptions.ConnectionError as e:
+        logger.error(f'[OAUTH] Connection error: {e}')
+        raise ValueError(f'Cannot connect to Google: {e}')
     if token_resp.status_code != 200:
         raise ValueError(f'Failed to exchange code: {token_resp.text}')
 
