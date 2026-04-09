@@ -148,7 +148,19 @@ def google_auth(request):
             google_user = _get_email_from_auth_code(code)
     except ValueError as e:
         return Response({'error': 'Token invalido', 'details': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        import traceback
+        logger.error(f'[OAUTH] Unexpected error in auth: {traceback.format_exc()}')
+        return Response({'error': 'Error interno', 'details': str(e), 'trace': traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    try:
+        return _process_google_auth(google_user, source, city_id)
+    except Exception as e:
+        import traceback
+        logger.error(f'[OAUTH] Error processing auth: {traceback.format_exc()}')
+        return Response({'error': 'Error interno', 'details': str(e), 'trace': traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+def _process_google_auth(google_user, source, city_id):
     email = google_user['email']
     first_name = google_user['first_name']
     last_name = google_user['last_name']
