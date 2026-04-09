@@ -28,7 +28,7 @@ DEBUG = os.environ.get('DEBUG') == 'True'
 # Configurable via env var. Incluye ALB hostname para health checks.
 ALLOWED_HOSTS = os.environ.get(
     'ALLOWED_HOSTS',
-    'django-backend-alb-290863292.us-east-2.elb.amazonaws.com,api.leasyauto.com,localhost,127.0.0.1'
+    'django-backend-alb-290863292.us-east-2.elb.amazonaws.com,api.opps-app.leasyauto.com,api.leasyauto.com,localhost,127.0.0.1'
 ).split(',')
 
 # Application definition
@@ -131,6 +131,12 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': False,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# CSRF Trusted Origins (required for Django 4+ with HTTPS cross-origin requests)
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'CSRF_TRUSTED_ORIGINS',
+    'https://opps-app.leasyauto.com,https://main.dl2z89ezd85gw.amplifyapp.com'
+).split(',')
 
 # Para que las cookies funcionen tras el Load Balancer
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
