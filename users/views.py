@@ -358,6 +358,70 @@ def assign_role(request, user_id):
     return Response(UserSerializer(target).data)
 
 
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_user(request, user_id):
+    """Update a user's country, city, or approval status. Admin can do all, supervisor can change city/country for operarios."""
+    if request.user.id == user_id:
+        return Response({'error': 'Usa tu perfil para cambiar tu propia info'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        target = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+    is_admin = request.user.has_perm_code('manage_all_roles')
+    is_supervisor = request.user.has_perm_code('assign_operario_role')
+
+    if not is_admin and not is_supervisor:
+        return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
+
+    # Supervisors can only edit operarios
+    if not is_admin and target.role and target.role.name != 'operario':
+        return Response({'error': 'Solo puedes editar operarios'}, status=status.HTTP_403_FORBIDDEN)
+
+    changed = []
+
+    # Country
+    if 'country_id' in request.data:
+        country_id = request.data['country_id']
+        if country_id:
+            try:
+                target.country = Country.objects.get(id=country_id)
+                changed.append('country')
+            except Country.DoesNotExist:
+                return Response({'error': 'País no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            target.country = None
+            changed.append('country')
+
+    # City
+    if 'city_id' in request.data:
+        city_id = request.data['city_id']
+        if city_id:
+            try:
+                city = City.objects.get(id=city_id)
+                if target.country and city.country_id != target.country_id:
+                    return Response({'error': 'La ciudad no pertenece al país del usuario'}, status=status.HTTP_400_BAD_REQUEST)
+                target.city = city
+                changed.append('city')
+            except City.DoesNotExist:
+                return Response({'error': 'Ciudad no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            target.city = None
+            changed.append('city')
+
+    # Approval status (admin only)
+    if 'is_approved' in request.data and is_admin:
+        target.is_approved = bool(request.data['is_approved'])
+        changed.append('is_approved')
+
+    if changed:
+        target.save(update_fields=changed)
+
+    return Response(UserSerializer(target).data)
+
+
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
