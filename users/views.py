@@ -324,6 +324,9 @@ def list_users(request):
     if not request.user.has_perm_code('manage_users'):
         return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
     users = User.objects.select_related('role', 'country', 'city').prefetch_related('role__permissions').all().order_by('-date_joined')
+    # Supervisors cannot see admins — only admins see everyone
+    if not request.user.has_perm_code('manage_all_roles'):
+        users = users.exclude(role__name='admin')
     return Response(UserSerializer(users, many=True).data)
 
 
@@ -341,12 +344,17 @@ def assign_role(request, user_id):
     except User.DoesNotExist:
         return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
+    # SECURITY: supervisors cannot touch admins or other supervisors
+    if not request.user.has_perm_code('manage_all_roles'):
+        if target.role and target.role.name in ('admin', 'supervisor'):
+            return Response({'error': 'No tienes permiso para modificar este usuario'}, status=status.HTTP_403_FORBIDDEN)
+
     serializer = AssignRoleSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     new_role = Role.objects.get(id=serializer.validated_data['role_id'])
 
-    # Permission checks
+    # Permission checks — what roles can be assigned
     if new_role.name == 'admin' and not request.user.has_perm_code('manage_all_roles'):
         return Response({'error': 'Solo admins pueden asignar rol admin'}, status=status.HTTP_403_FORBIDDEN)
     if new_role.name == 'supervisor' and not request.user.has_perm_code('assign_supervisor_role'):
@@ -376,9 +384,10 @@ def update_user(request, user_id):
     if not is_admin and not is_supervisor:
         return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
 
-    # Supervisors can only edit operarios
-    if not is_admin and target.role and target.role.name != 'operario':
-        return Response({'error': 'Solo puedes editar operarios'}, status=status.HTTP_403_FORBIDDEN)
+    # Supervisors can only edit operarios and users without role (pending)
+    if not is_admin:
+        if target.role and target.role.name in ('admin', 'supervisor'):
+            return Response({'error': 'No tienes permiso para modificar este usuario'}, status=status.HTTP_403_FORBIDDEN)
 
     changed = []
 
@@ -448,3 +457,57 @@ def list_cities(request):
 @permission_classes([AllowAny])
 def list_roles(request):
     return Response(RoleSerializer(Role.objects.prefetch_related('permissions').all(), many=True).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def set_location(request):
+    """
+    Receive user's lat/lng coordinates, find the nearest city in our coverage,
+    and assign it to the user. Also sets the country automatically.
+    """
+    import math
+    lat = request.data.get('latitude')
+    lng = request.data.get('longitude')
+
+    if lat is None or lng is None:
+        return Response({'error': 'latitude and longitude required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except (ValueError, TypeError):
+        return Response({'error': 'Invalid coordinates'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Find nearest city using Haversine distance
+    cities_with_coords = City.objects.filter(latitude__isnull=False, longitude__isnull=False).select_related('country')
+
+    if not cities_with_coords.exists():
+        return Response({'error': 'No cities with coordinates available'}, status=status.HTTP_404_NOT_FOUND)
+
+    def haversine(lat1, lon1, lat2, lon2):
+        R = 6371  # km
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+        return R * 2 * math.asin(math.sqrt(a))
+
+    nearest = None
+    min_dist = float('inf')
+    for city in cities_with_coords:
+        d = haversine(lat, lng, city.latitude, city.longitude)
+        if d < min_dist:
+            min_dist = d
+            nearest = city
+
+    user = request.user
+    user.city = nearest
+    user.country = nearest.country
+    user.save(update_fields=['city', 'country'])
+
+    from .serializers import UserSerializer, CitySerializer
+    return Response({
+        'city': CitySerializer(nearest).data,
+        'distance_km': round(min_dist, 1),
+        'user': UserSerializer(user).data,
+    })

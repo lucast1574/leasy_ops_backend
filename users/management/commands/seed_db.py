@@ -16,8 +16,15 @@ COUNTRIES = [
 ]
 
 CITIES = {
-    'PE': ['Lima', 'Arequipa'],
-    'MX': ['CDMX', 'Guadalajara', 'Monterrey'],
+    'PE': [
+        {'name': 'Lima', 'lat': -12.0464, 'lng': -77.0428},
+        {'name': 'Arequipa', 'lat': -16.4090, 'lng': -71.5375},
+    ],
+    'MX': [
+        {'name': 'CDMX', 'lat': 19.4326, 'lng': -99.1332},
+        {'name': 'Guadalajara', 'lat': 20.6597, 'lng': -103.3496},
+        {'name': 'Monterrey', 'lat': 25.6866, 'lng': -100.3161},
+    ],
 }
 
 PERMISSIONS = [
@@ -81,14 +88,19 @@ class Command(BaseCommand):
 
         # --- Cities ---
         city_map = {}
-        for country_code, city_names in CITIES.items():
+        for country_code, city_list in CITIES.items():
             country = country_map[country_code]
-            for city_name in city_names:
+            for city_data in city_list:
                 obj, created = City.objects.get_or_create(
-                    name=city_name,
-                    country=country
+                    name=city_data['name'],
+                    country=country,
+                    defaults={'latitude': city_data['lat'], 'longitude': city_data['lng']}
                 )
-                city_map[city_name] = obj
+                if not created and (obj.latitude != city_data['lat'] or obj.longitude != city_data['lng']):
+                    obj.latitude = city_data['lat']
+                    obj.longitude = city_data['lng']
+                    obj.save(update_fields=['latitude', 'longitude'])
+                city_map[city_data['name']] = obj
                 status = 'OK Created' if created else '  Exists'
                 self.stdout.write(f"{status}: City {obj.name} ({country.name})")
 

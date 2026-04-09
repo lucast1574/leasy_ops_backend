@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     google_auth, me, update_user_city, list_users, assign_role, update_user,
-    list_countries, list_cities, list_roles, check_user_status,
+    list_countries, list_cities, list_roles, check_user_status, set_location,
 )
 
 urlpatterns = [
@@ -20,4 +20,5 @@ urlpatterns = [
     path('countries/', list_countries, name='list-countries'),
     path('cities/', list_cities, name='list-cities'),
     path('roles/', list_roles, name='list-roles'),
+    path('me/location/', set_location, name='set-location'),
 ]
