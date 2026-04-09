@@ -39,3 +39,16 @@ def debug_network(request):
         results['https_post'] = {'ok': False, 'error': str(e)}
     
     return JsonResponse(results)
+
+def debug_db(request):
+    """Test database connectivity."""
+    import time
+    from django.db import connection
+    try:
+        t0 = time.time()
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+            row = cursor.fetchone()
+        return JsonResponse({'ok': True, 'result': row[0], 'ms': round((time.time()-t0)*1000)})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
