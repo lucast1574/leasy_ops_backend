@@ -465,10 +465,14 @@ def set_location(request):
         return Response({'error': 'Invalid coordinates'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Upsert the live location
-    UserLocation.objects.update_or_create(
-        user=request.user,
-        defaults={'latitude': lat, 'longitude': lng},
-    )
+    try:
+        UserLocation.objects.update_or_create(
+            user=request.user,
+            defaults={'latitude': lat, 'longitude': lng},
+        )
+    except Exception as e:
+        logger.error(f'[SET_LOCATION] UserLocation upsert failed: {e}')
+        return Response({'error': f'Failed to save location: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # Assign nearest city (existing logic)
     user = request.user
@@ -546,7 +550,11 @@ def tracking_locations(request):
             'user', 'user__role', 'user__city', 'user__country'
         )
 
-    return Response(UserLocationSerializer(locations, many=True).data)
+    try:
+        return Response(UserLocationSerializer(locations, many=True).data)
+    except Exception as e:
+        logger.error(f'[TRACKING] Serialization error: {e}')
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ==========================================================================

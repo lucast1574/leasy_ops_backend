@@ -10,7 +10,7 @@ echo "[2/4] Seeding database..."
 python manage.py seed_db
 
 echo "[3/4] Rebuilding supervisor assignments..."
-python manage.py rebuild_assignments
+python manage.py rebuild_assignments || echo "WARNING: rebuild_assignments failed (non-fatal)"
 
 echo "[4/4] Starting Gunicorn..."
 exec gunicorn config.wsgi:application \

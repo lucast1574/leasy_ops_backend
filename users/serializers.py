@@ -66,11 +66,11 @@ class AssignRoleSerializer(serializers.Serializer):
 
 class UserLocationSerializer(serializers.ModelSerializer):
     """Compact location payload returned by the tracking endpoint."""
-    user_id = serializers.IntegerField(source='user.id')
-    first_name = serializers.CharField(source='user.first_name')
-    last_name = serializers.CharField(source='user.last_name')
-    email = serializers.EmailField(source='user.email')
-    profile_picture = serializers.URLField(source='user.profile_picture')
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    email = serializers.CharField(source='user.email', read_only=True)
+    profile_picture = serializers.CharField(source='user.profile_picture', read_only=True, allow_blank=True)
     role_name = serializers.SerializerMethodField()
     city_name = serializers.SerializerMethodField()
     country_code = serializers.SerializerMethodField()
