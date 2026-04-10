@@ -515,8 +515,8 @@ def tracking_locations(request):
     """
     Returns live locations visible to the requesting user.
 
-    Admin  → all users with a location record.
-    Supervisor → only their assigned operarios (same-city auto + adopted).
+    Admin      → ALL users with a location record (admins, supervisors, operarios).
+    Supervisor → their own location + their assigned operarios.
     """
     user = request.user
 
@@ -526,14 +526,19 @@ def tracking_locations(request):
     is_admin = user.has_perm_code('manage_all_roles')
 
     if is_admin:
+        # Admin sees everyone
         locations = UserLocation.objects.select_related(
             'user', 'user__role', 'user__city', 'user__country'
         ).all()
     else:
-        # Supervisor: get operario ids from assignments
-        assigned_ids = SupervisorAssignment.objects.filter(
-            supervisor=user
-        ).values_list('operario_id', flat=True)
+        # Supervisor: their assigned operarios + themselves
+        assigned_ids = list(
+            SupervisorAssignment.objects.filter(
+                supervisor=user
+            ).values_list('operario_id', flat=True)
+        )
+        # Include the supervisor's own id so they see their own pin
+        assigned_ids.append(user.id)
 
         locations = UserLocation.objects.filter(
             user_id__in=assigned_ids
