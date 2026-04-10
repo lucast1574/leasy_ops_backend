@@ -169,6 +169,11 @@ def _process_google_auth(google_user, source, city_id):
         except City.DoesNotExist:
             pass
 
+    # Fallback: if no city was provided, assign the first city of the country
+    # (capital / default). GPS-based assignment will refine it later.
+    if not city and country:
+        city = City.objects.filter(country=country).order_by('id').first()
+
     is_new = False
     try:
         user = User.objects.get(email=email)
@@ -206,9 +211,14 @@ def _process_google_auth(google_user, source, city_id):
         if not user.country and country:
             user.country = country
             changed = True
-        if not user.city and city:
-            user.city = city
-            changed = True
+        if not user.city:
+            # Assign fallback city (first city of user's country)
+            fallback_city = city  # from request or country default above
+            if not fallback_city and user.country:
+                fallback_city = City.objects.filter(country=user.country).order_by('id').first()
+            if fallback_city:
+                user.city = fallback_city
+                changed = True
         if picture and user.profile_picture != picture:
             user.profile_picture = picture
             changed = True
@@ -220,6 +230,9 @@ def _process_google_auth(google_user, source, city_id):
             changed = True
         if changed:
             user.save()
+            # If city was just assigned and user is operario, rebuild assignments
+            if user.city and user.role and user.role.name == 'operario':
+                _auto_assign_supervisors(user)
 
     if source == 'backoffice':
         if not user.is_approved or not user.role:
