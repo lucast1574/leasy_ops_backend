@@ -100,3 +100,54 @@ class User(AbstractUser):
 
     # Alias for compatibility
     has_app_permission = has_perm_code
+
+
+class UserLocation(models.Model):
+    """Stores the latest known GPS position for a user (one row per user)."""
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name='location'
+    )
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['updated_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} ({self.latitude}, {self.longitude})"
+
+
+class SupervisorAssignment(models.Model):
+    """
+    Links a supervisor to the operarios they oversee.
+
+    Default behaviour (created automatically):
+      All operarios in the same city as the supervisor.
+
+    Adoption:
+      A supervisor can "adopt" operarios from other cities **within the
+      same country**.  Cross-country adoption is forbidden at the view
+      layer.
+    """
+    supervisor = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='supervised_assignments'
+    )
+    operario = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='supervisor_assignments'
+    )
+    is_adopted = models.BooleanField(
+        default=False,
+        help_text='True when the supervisor manually adopted this operario '
+                  'from another city in the same country.',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('supervisor', 'operario')
+
+    def __str__(self):
+        tag = ' [adopted]' if self.is_adopted else ''
+        return f"{self.supervisor.email} → {self.operario.email}{tag}"

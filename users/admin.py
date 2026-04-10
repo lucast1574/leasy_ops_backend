@@ -1,6 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Role, Permission, RolePermission, Country, City
+from .models import (
+    User, Role, Permission, RolePermission, Country, City,
+    UserLocation, SupervisorAssignment,
+)
 
 
 @admin.register(Country)
@@ -65,3 +68,22 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('role', 'country', 'city', 'is_approved', 'registered_from')
         }),
     )
+
+
+@admin.register(UserLocation)
+class UserLocationAdmin(admin.ModelAdmin):
+    list_display = ('user', 'latitude', 'longitude', 'updated_at')
+    search_fields = ('user__email', 'user__first_name')
+    list_filter = ('updated_at',)
+    readonly_fields = ('updated_at',)
+
+
+@admin.register(SupervisorAssignment)
+class SupervisorAssignmentAdmin(admin.ModelAdmin):
+    list_display = ('supervisor', 'operario', 'is_adopted', 'created_at')
+    list_filter = ('is_adopted', 'supervisor__city')
+    search_fields = (
+        'supervisor__email', 'supervisor__first_name',
+        'operario__email', 'operario__first_name',
+    )
+    readonly_fields = ('created_at',)
