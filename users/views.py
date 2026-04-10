@@ -348,8 +348,13 @@ def assign_role(request, user_id):
             return Response({'error': 'No tienes permiso para modificar este usuario'}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = AssignRoleSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    new_role = Role.objects.get(id=serializer.validated_data['role_id'])
+    if not serializer.is_valid():
+        return Response({'error': 'Datos inválidos', 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        new_role = Role.objects.get(id=serializer.validated_data['role_id'])
+    except Role.DoesNotExist:
+        return Response({'error': 'Rol no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
     if new_role.name == 'admin' and not request.user.has_perm_code('manage_all_roles'):
         return Response({'error': 'Solo admins pueden asignar rol admin'}, status=status.HTTP_403_FORBIDDEN)
@@ -362,8 +367,13 @@ def assign_role(request, user_id):
     target.save(update_fields=['role', 'is_approved'])
 
     # Rebuild supervisor assignments when role changes
-    _rebuild_assignments_for_user(target, old_role_name)
+    try:
+        _rebuild_assignments_for_user(target, old_role_name)
+    except Exception as e:
+        logger.warning(f'[ASSIGN_ROLE] rebuild_assignments failed: {e}')
 
+    # Refresh from DB to get updated related objects for serializer
+    target.refresh_from_db()
     return Response(UserSerializer(target).data)
 
 
