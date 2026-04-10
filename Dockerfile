@@ -21,12 +21,14 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copia el proyecto entero
 COPY . /app/
 
-# Recolección de archivos estáticos (Útil para entornos en la nube como AWS ECS o AppRunner)
-# Pasamos una SECRET_KEY falsa al momento del build para que Django no marque error al hacer collectstatic
+# Recolección de archivos estáticos
 RUN SECRET_KEY='dummy-key-for-build' python manage.py collectstatic --noinput
+
+# Asegura que el entrypoint sea ejecutable
+RUN chmod +x /app/entrypoint.sh
 
 # Expone el puerto 8000
 EXPOSE 8000
 
-# Comando para arrancar con Gunicorn (tu carpeta de settings/wsgi se llama 'config')
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "--log-level", "debug"]
+# Usa entrypoint.sh que corre: migrate → seed_db → rebuild_assignments → gunicorn
+CMD ["/app/entrypoint.sh"]
