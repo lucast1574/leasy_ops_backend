@@ -411,6 +411,137 @@ def backoffice_delete_task(request, task_id):
 
 
 # ==========================================================================
+# Dashboard metrics
+# ==========================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_metrics(request):
+    """Dashboard metrics for supervisors/admins."""
+    if not request.user.has_perm_code('backoffice_access'):
+        return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
+
+    from django.db.models import Count, Avg, F, Q, ExpressionWrapper, DurationField
+    from django.db.models.functions import TruncDate
+    from users.models import SupervisorAssignment
+    import datetime
+
+    is_admin = request.user.has_perm_code('manage_all_roles')
+
+    # Base queryset
+    if is_admin:
+        tasks = Task.objects.all()
+    else:
+        operario_ids = list(
+            SupervisorAssignment.objects.filter(
+                supervisor=request.user
+            ).values_list('operario_id', flat=True)
+        )
+        tasks = Task.objects.filter(assigned_to_id__in=operario_ids)
+
+    today = timezone.now().date()
+    week_ago = today - datetime.timedelta(days=7)
+    month_ago = today - datetime.timedelta(days=30)
+
+    # --- Summary cards ---
+    total_today = tasks.filter(scheduled_date=today).count()
+    pending_today = tasks.filter(scheduled_date=today, status='pending').count()
+    in_progress = tasks.filter(status__in=['in_progress', 'rescheduled']).count()
+    completed_today = tasks.filter(scheduled_date=today, status='completed').count()
+    completed_week = tasks.filter(completed_at__date__gte=week_ago, status='completed').count()
+    completed_month = tasks.filter(completed_at__date__gte=month_ago, status='completed').count()
+    rejected_month = tasks.filter(completed_at__date__gte=month_ago, status='rejected').count()
+    rescheduled_month = tasks.filter(updated_at__date__gte=month_ago, status='rescheduled').count()
+
+    # --- Tasks by type ---
+    by_type = list(
+        tasks.filter(scheduled_date__gte=month_ago)
+        .values('type__name', 'type__slug')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+
+    # --- Tasks by status ---
+    by_status = list(
+        tasks.values('status').annotate(count=Count('id')).order_by('-count')
+    )
+
+    # --- Operario ranking (last 30 days) ---
+    ranking = list(
+        tasks.filter(completed_at__date__gte=month_ago, status='completed')
+        .values(
+            'assigned_to__id',
+            'assigned_to__first_name',
+            'assigned_to__last_name',
+            'assigned_to__profile_picture',
+            'assigned_to__city__name',
+        )
+        .annotate(
+            completed_count=Count('id'),
+        )
+        .order_by('-completed_count')[:10]
+    )
+
+    # Add average completion time per operario
+    for r in ranking:
+        op_tasks = tasks.filter(
+            assigned_to_id=r['assigned_to__id'],
+            status='completed',
+            started_at__isnull=False,
+            completed_at__isnull=False,
+            completed_at__date__gte=month_ago,
+        )
+        durations = []
+        for t in op_tasks:
+            if t.started_at and t.completed_at:
+                durations.append((t.completed_at - t.started_at).total_seconds())
+        r['avg_minutes'] = round(sum(durations) / len(durations) / 60, 1) if durations else None
+        r['total_assigned'] = tasks.filter(
+            assigned_to_id=r['assigned_to__id'],
+            scheduled_date__gte=month_ago,
+        ).count()
+        if r['total_assigned'] > 0:
+            r['efficiency'] = round(r['completed_count'] / r['total_assigned'] * 100, 1)
+        else:
+            r['efficiency'] = 0
+
+    # --- In-progress tasks list ---
+    in_progress_tasks = TaskListSerializer(
+        tasks.filter(status__in=['in_progress', 'rescheduled'])
+        .select_related('type', 'assigned_to')
+        .order_by('scheduled_date', 'start_time')[:20],
+        many=True
+    ).data
+
+    # --- Daily completions (last 7 days) ---
+    daily = list(
+        tasks.filter(completed_at__date__gte=week_ago, status='completed')
+        .annotate(day=TruncDate('completed_at'))
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+
+    return Response({
+        'summary': {
+            'total_today': total_today,
+            'pending_today': pending_today,
+            'in_progress': in_progress,
+            'completed_today': completed_today,
+            'completed_week': completed_week,
+            'completed_month': completed_month,
+            'rejected_month': rejected_month,
+            'rescheduled_month': rescheduled_month,
+        },
+        'by_type': by_type,
+        'by_status': by_status,
+        'ranking': ranking,
+        'in_progress_tasks': in_progress_tasks,
+        'daily_completions': [{'day': str(d['day']), 'count': d['count']} for d in daily],
+    })
+
+
+# ==========================================================================
 # Catalogs
 # ==========================================================================
 

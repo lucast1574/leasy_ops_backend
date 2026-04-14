@@ -4,7 +4,7 @@ from .views import (
     request_upload_url, confirm_upload, submit_task, reschedule_task,
     backoffice_tasks, backoffice_create_task, backoffice_update_task,
     backoffice_reassign_task, backoffice_delete_task,
-    list_task_types,
+    dashboard_metrics, list_task_types,
 )
 
 urlpatterns = [
@@ -23,6 +23,9 @@ urlpatterns = [
     path('backoffice/<int:task_id>/', backoffice_update_task, name='backoffice-update-task'),
     path('backoffice/<int:task_id>/reassign/', backoffice_reassign_task, name='backoffice-reassign-task'),
     path('backoffice/<int:task_id>/delete/', backoffice_delete_task, name='backoffice-delete-task'),
+
+    # Dashboard
+    path('dashboard/', dashboard_metrics, name='dashboard-metrics'),
 
     # Catalogs
     path('types/', list_task_types, name='list-task-types'),
