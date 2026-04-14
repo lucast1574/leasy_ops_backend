@@ -1,5 +1,11 @@
 from django.contrib import admin
-from .models import TaskType, Task, TaskPhoto, TaskResult
+from .models import CityGeofence, TaskType, Task, TaskPhoto, TaskResult
+
+
+@admin.register(CityGeofence)
+class CityGeofenceAdmin(admin.ModelAdmin):
+    list_display = ['city', 'center_latitude', 'center_longitude', 'radius_km', 'is_active']
+    list_filter = ['is_active', 'city__country']
 
 
 @admin.register(TaskType)
@@ -22,8 +28,8 @@ class TaskResultInline(admin.StackedInline):
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ['id', 'type', 'assigned_to', 'status', 'scheduled_date', 'start_time']
-    list_filter = ['status', 'type', 'scheduled_date']
+    list_display = ['id', 'type', 'assigned_to', 'status', 'scheduled_date', 'start_time', 'city_geofence']
+    list_filter = ['status', 'type', 'scheduled_date', 'city_geofence__city']
     search_fields = ['assigned_to__email', 'client_name', 'placa']
     raw_id_fields = ['assigned_to', 'assigned_by']
     inlines = [TaskPhotoInline, TaskResultInline]

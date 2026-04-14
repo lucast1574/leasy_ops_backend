@@ -11,6 +11,7 @@ from .serializers import (
     TaskCreateSerializer, TaskSubmitSerializer, TaskPhotoSerializer,
 )
 from .s3 import generate_upload_url, generate_download_url
+from .validators import validate_task_location, validate_task_assignment, validate_task_reassignment, TaskValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,12 @@ def my_tasks(request):
     task_status = request.query_params.get('status')
     if task_status:
         tasks = tasks.filter(status=task_status)
+
+    # Filter by main_status (dashboard grouping: pending, in_progress, completed)
+    main_status = request.query_params.get('main_status')
+    if main_status:
+        sub_statuses = [k for k, v in Task.STATUS_TO_MAIN.items() if v == main_status]
+        tasks = tasks.filter(status__in=sub_statuses)
 
     task_type = request.query_params.get('type')
     if task_type:
@@ -222,6 +229,11 @@ def backoffice_tasks(request):
     if task_status:
         tasks = tasks.filter(status=task_status)
 
+    main_status = request.query_params.get('main_status')
+    if main_status:
+        sub_statuses = [k for k, v in Task.STATUS_TO_MAIN.items() if v == main_status]
+        tasks = tasks.filter(status__in=sub_statuses)
+
     task_type = request.query_params.get('type')
     if task_type:
         tasks = tasks.filter(type__slug=task_type)
@@ -244,12 +256,38 @@ def backoffice_create_task(request):
     if not request.user.has_perm_code('backoffice_access'):
         return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
 
+    # 1. Validate geofence
+    lat = request.data.get('latitude')
+    lng = request.data.get('longitude')
+    try:
+        geofence = validate_task_location(lat, lng)
+    except TaskValidationError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 2. Validate operario assignment
+    assigned_to_id = request.data.get('assigned_to_id')
+    if not assigned_to_id:
+        return Response({'error': 'assigned_to_id es obligatorio'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        operario = User.objects.select_related('city', 'country', 'role').get(id=assigned_to_id)
+    except User.DoesNotExist:
+        return Response({'error': 'Operario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        validate_task_assignment(request.user, operario, geofence)
+    except TaskValidationError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 3. Create the task
     serializer = TaskCreateSerializer(data=request.data, context={'request': request})
     if not serializer.is_valid():
         return Response({'error': 'Datos inválidos', 'details': serializer.errors},
                         status=status.HTTP_400_BAD_REQUEST)
 
-    task = serializer.save()
+    task = serializer.save(city_geofence=geofence)
     return Response(TaskDetailSerializer(task).data, status=status.HTTP_201_CREATED)
 
 
@@ -294,6 +332,57 @@ def backoffice_update_task(request, task_id):
         task.save(update_fields=changed)
 
     return Response(TaskDetailSerializer(task).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def backoffice_reassign_task(request, task_id):
+    """Reassign a task to a different operario."""
+    if not request.user.has_perm_code('backoffice_access'):
+        return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        task = Task.objects.get(id=task_id)
+    except Task.DoesNotExist:
+        return Response({'error': 'Tarea no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+    if task.status in ('completed', 'rejected'):
+        return Response({'error': 'No se puede reasignar una tarea finalizada'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    new_operario_id = request.data.get('assigned_to_id')
+    if not new_operario_id:
+        return Response({'error': 'assigned_to_id requerido'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        new_operario = User.objects.get(id=new_operario_id)
+    except User.DoesNotExist:
+        return Response({'error': 'Operario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not new_operario.role or new_operario.role.name != 'operario':
+        return Response({'error': 'El usuario debe ser operario'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate geofence rules
+    try:
+        validate_task_reassignment(request.user, new_operario, task)
+    except TaskValidationError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    old_operario = task.assigned_to
+    task.assigned_to = new_operario
+    # Reset to pending if it was in progress
+    if task.status in ('in_progress', 'rescheduled'):
+        task.status = 'pending'
+        task.started_at = None
+    task.save(update_fields=['assigned_to', 'status', 'started_at', 'updated_at'])
+
+    return Response({
+        'status': 'ok',
+        'message': f'Tarea reasignada de {old_operario.first_name} a {new_operario.first_name}',
+        'task': TaskDetailSerializer(task).data,
+    })
 
 
 @api_view(['DELETE'])

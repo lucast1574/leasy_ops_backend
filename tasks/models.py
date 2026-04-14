@@ -1,5 +1,58 @@
+import math
 from django.db import models
 from django.conf import settings
+
+
+class CityGeofence(models.Model):
+    """
+    Defines a circular geofence around each operational city.
+    Tasks can only be created within a city's geofence,
+    and only assigned to operarios belonging to that city.
+    """
+    city = models.OneToOneField(
+        'users.City', on_delete=models.CASCADE, related_name='geofence'
+    )
+    # Center point (defaults to city coordinates)
+    center_latitude = models.FloatField()
+    center_longitude = models.FloatField()
+    # Radius in kilometers
+    radius_km = models.FloatField(default=80.0,
+        help_text='Geofence radius in km. Large to cover suburban/rural taxi drivers.')
+    is_active = models.BooleanField(default=True)
+
+    def contains(self, lat, lng):
+        """Check if a point (lat, lng) falls within this geofence."""
+        return self._haversine(
+            self.center_latitude, self.center_longitude, lat, lng
+        ) <= self.radius_km
+
+    @staticmethod
+    def _haversine(lat1, lon1, lat2, lon2):
+        """Calculate distance in km between two points using Haversine formula."""
+        R = 6371  # Earth radius in km
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = (math.sin(dlat / 2) ** 2 +
+             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+             math.sin(dlon / 2) ** 2)
+        return R * 2 * math.asin(math.sqrt(a))
+
+    @classmethod
+    def find_geofence(cls, lat, lng):
+        """
+        Find which active geofence contains the given point.
+        Returns the CityGeofence or None.
+        """
+        for gf in cls.objects.filter(is_active=True).select_related('city', 'city__country'):
+            if gf.contains(lat, lng):
+                return gf
+        return None
+
+    def __str__(self):
+        return f"{self.city.name} ({self.radius_km}km)"
+
+    class Meta:
+        ordering = ['city__country__code', 'city__name']
 
 
 class TaskType(models.Model):
@@ -32,13 +85,33 @@ class TaskType(models.Model):
 
 
 class Task(models.Model):
-    STATUS_CHOICES = [
+    # Main states (for dashboard grouping)
+    MAIN_STATE_CHOICES = [
         ('pending', 'Pendiente'),
         ('in_progress', 'En curso'),
         ('completed', 'Completada'),
-        ('rejected', 'Rechazada'),
-        ('rescheduled', 'Reprogramada'),
     ]
+
+    # Sub-states (the actual detailed status)
+    STATUS_CHOICES = [
+        # pending sub-states
+        ('pending', 'Pendiente'),
+        # in_progress sub-states
+        ('in_progress', 'En curso'),
+        ('rescheduled', 'Reprogramada'),
+        # completed sub-states
+        ('completed', 'Completada'),
+        ('rejected', 'Rechazada'),
+    ]
+
+    # Mapping: sub-state → main state (for dashboard filtering)
+    STATUS_TO_MAIN = {
+        'pending': 'pending',
+        'in_progress': 'in_progress',
+        'rescheduled': 'in_progress',
+        'completed': 'completed',
+        'rejected': 'completed',
+    }
 
     # Core fields
     type = models.ForeignKey(TaskType, on_delete=models.PROTECT, related_name='tasks')
@@ -61,10 +134,22 @@ class Task(models.Model):
     start_time = models.TimeField(null=True, blank=True)
     end_time = models.TimeField(null=True, blank=True)
 
-    # Location
+    # Location (REQUIRED — every task must have coordinates)
     address = models.CharField(max_length=500, blank=True, default='')
-    latitude = models.FloatField(null=True, blank=True)
-    longitude = models.FloatField(null=True, blank=True)
+    latitude = models.FloatField(
+        null=True, blank=True,
+        help_text='Required for new tasks. Must fall within an active city geofence.'
+    )
+    longitude = models.FloatField(
+        null=True, blank=True,
+        help_text='Required for new tasks. Must fall within an active city geofence.'
+    )
+    # The geofence/city this task belongs to (set automatically on creation)
+    city_geofence = models.ForeignKey(
+        CityGeofence, on_delete=models.PROTECT,
+        null=True, blank=True, related_name='tasks',
+        help_text='Auto-assigned based on lat/lng on creation'
+    )
 
     # Client info (optional, depends on task type)
     client_name = models.CharField(max_length=200, blank=True, default='')
@@ -100,6 +185,11 @@ class Task(models.Model):
             models.Index(fields=['status']),
             models.Index(fields=['scheduled_date']),
         ]
+
+    @property
+    def main_status(self):
+        """Returns the main state for dashboard grouping."""
+        return self.STATUS_TO_MAIN.get(self.status, 'pending')
 
     def __str__(self):
         return f"{self.type.name} - {self.assigned_to.email} ({self.scheduled_date})"

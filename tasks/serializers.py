@@ -24,18 +24,25 @@ class TaskResultSerializer(serializers.ModelSerializer):
 class TaskListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for task lists."""
     type = TaskTypeSerializer(read_only=True)
+    assigned_to = UserSerializer(read_only=True)
     photo_count = serializers.SerializerMethodField()
+    main_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = [
-            'id', 'type', 'status', 'scheduled_date', 'start_time', 'end_time',
+            'id', 'type', 'status', 'main_status',
+            'assigned_to',
+            'scheduled_date', 'start_time', 'end_time',
             'address', 'client_name', 'placa', 'marca', 'modelo',
             'started_at', 'completed_at', 'photo_count',
         ]
 
     def get_photo_count(self, obj):
         return obj.photos.count()
+
+    def get_main_status(self, obj):
+        return obj.main_status
 
 
 class TaskDetailSerializer(serializers.ModelSerializer):
@@ -45,14 +52,16 @@ class TaskDetailSerializer(serializers.ModelSerializer):
     assigned_by = UserSerializer(read_only=True)
     photos = TaskPhotoSerializer(many=True, read_only=True)
     result = TaskResultSerializer(read_only=True)
+    main_status = serializers.SerializerMethodField()
+    city_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = [
-            'id', 'type', 'status',
+            'id', 'type', 'status', 'main_status',
             'assigned_to', 'assigned_by',
             'scheduled_date', 'start_time', 'end_time',
-            'address', 'latitude', 'longitude',
+            'address', 'latitude', 'longitude', 'city_name',
             'client_name', 'client_dni',
             'placa', 'marca', 'modelo', 'color', 'vehicle_type',
             'metadata', 'observations',
@@ -61,6 +70,14 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
 
+    def get_main_status(self, obj):
+        return obj.main_status
+
+    def get_city_name(self, obj):
+        if obj.city_geofence and obj.city_geofence.city:
+            return obj.city_geofence.city.name
+        return None
+
 
 class TaskCreateSerializer(serializers.ModelSerializer):
     """For backoffice task creation."""
@@ -68,6 +85,8 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         slug_field='slug', queryset=TaskType.objects.all(), source='type'
     )
     assigned_to_id = serializers.IntegerField(write_only=True)
+    latitude = serializers.FloatField(required=True)
+    longitude = serializers.FloatField(required=True)
 
     class Meta:
         model = Task
