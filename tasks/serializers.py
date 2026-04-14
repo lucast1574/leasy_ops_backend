@@ -61,7 +61,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             'id', 'type', 'status', 'main_status',
             'assigned_to', 'assigned_by',
             'scheduled_date', 'start_time', 'end_time',
-            'address', 'latitude', 'longitude', 'city_name',
+            'address', 'latitude', 'longitude', 'google_maps_link', 'city_name',
             'client_name', 'client_dni',
             'placa', 'marca', 'modelo', 'color', 'vehicle_type',
             'metadata', 'observations',
@@ -93,7 +93,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         fields = [
             'type_slug', 'assigned_to_id',
             'scheduled_date', 'start_time', 'end_time',
-            'address', 'latitude', 'longitude',
+            'address', 'latitude', 'longitude', 'google_maps_link',
             'client_name', 'client_dni',
             'placa', 'marca', 'modelo', 'color', 'vehicle_type',
             'metadata', 'observations',

@@ -287,7 +287,12 @@ def backoffice_create_task(request):
         return Response({'error': 'Datos inválidos', 'details': serializer.errors},
                         status=status.HTTP_400_BAD_REQUEST)
 
-    task = serializer.save(city_geofence=geofence)
+    # Auto-generate google maps link
+    lat = float(request.data.get('latitude'))
+    lng = float(request.data.get('longitude'))
+    maps_link = request.data.get('google_maps_link', '') or f'https://www.google.com/maps?q={lat},{lng}'
+
+    task = serializer.save(city_geofence=geofence, google_maps_link=maps_link)
     return Response(TaskDetailSerializer(task).data, status=status.HTTP_201_CREATED)
 
 

@@ -144,6 +144,9 @@ class Task(models.Model):
         null=True, blank=True,
         help_text='Required for new tasks. Must fall within an active city geofence.'
     )
+    google_maps_link = models.URLField(max_length=500, blank=True, default='',
+        help_text='Auto-generated Google Maps link for the task location')
+
     # The geofence/city this task belongs to (set automatically on creation)
     city_geofence = models.ForeignKey(
         CityGeofence, on_delete=models.PROTECT,
