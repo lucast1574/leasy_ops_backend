@@ -9,4 +9,5 @@ urlpatterns = [
     path('debug-db/', debug_db, name='debug_db'),
     path('admin/', admin.site.urls),
     path('api/v1/users/', include('users.urls')),
+    path('api/v1/tasks/', include('tasks.urls')),
 ]
