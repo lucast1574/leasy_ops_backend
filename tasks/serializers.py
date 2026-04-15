@@ -25,6 +25,8 @@ class TaskListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for task lists."""
     type = TaskTypeSerializer(read_only=True)
     assigned_to = UserSerializer(read_only=True)
+    # photo_count is annotated on the queryset to avoid N+1 queries.
+    # Falls back to counting via relation if the annotation is absent (e.g. detail views).
     photo_count = serializers.SerializerMethodField()
     main_status = serializers.SerializerMethodField()
 
@@ -39,6 +41,9 @@ class TaskListSerializer(serializers.ModelSerializer):
         ]
 
     def get_photo_count(self, obj):
+        # Use pre-annotated value when available (avoids N+1)
+        if hasattr(obj, 'photo_count'):
+            return obj.photo_count
         return obj.photos.count()
 
     def get_main_status(self, obj):

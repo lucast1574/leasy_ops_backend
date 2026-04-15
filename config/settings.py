@@ -4,6 +4,7 @@ Django settings for config project.
 
 from pathlib import Path
 import os
+import logging
 import dj_database_url
 from dotenv import load_dotenv
 
@@ -11,6 +12,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+logger = logging.getLogger(__name__)
 
 # SECURITY: SECRET_KEY must be set in environment variables for production.
 # If not set, Django will refuse to start in production (DEBUG=False).
@@ -30,6 +33,14 @@ ALLOWED_HOSTS = os.environ.get(
     'ALLOWED_HOSTS',
     'django-backend-alb-290863292.us-east-2.elb.amazonaws.com,api.opps-app.leasyauto.com,api.leasyauto.com,localhost,127.0.0.1'
 ).split(',')
+
+# Security warning: ALLOWED_HOSTS = '*' is a security risk in production
+if '*' in ALLOWED_HOSTS:
+    logging.warning(
+        'SECURITY WARNING: ALLOWED_HOSTS contains "*" which allows any host. '
+        'This is a significant security risk in production. '
+        'Set ALLOWED_HOSTS to specific domains in your environment.'
+    )
 
 # Application definition
 INSTALLED_APPS = [
@@ -115,7 +126,15 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
-    ]
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/min',
+        'user': '100/min',
+    },
 }
 
 # Configuración de CORS para el Frontend
@@ -124,12 +143,12 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     'http://localhost:3000,http://localhost:5173,https://opps-app.leasyauto.com'
 ).split(',')
 
-# JWT token lifetime
+# JWT token lifetime — secure production values
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=365),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=365),
-    'ROTATE_REFRESH_TOKENS': False,
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
+    'ROTATE_REFRESH_TOKENS': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
@@ -141,3 +160,19 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
 
 # Para que las cookies funcionen tras el Load Balancer
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# -----------------------------------------------------------------------
+# Security headers
+# -----------------------------------------------------------------------
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SESSION_COOKIE_HTTPONLY = True
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True

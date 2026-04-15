@@ -26,7 +26,7 @@ def my_tasks(request):
     """List tasks assigned to the current operario, with optional filters."""
     tasks = Task.objects.filter(
         assigned_to=request.user
-    ).select_related('type')
+    ).select_related('type', 'assigned_to')
 
     # Filters
     task_status = request.query_params.get('status')
@@ -46,6 +46,9 @@ def my_tasks(request):
     date = request.query_params.get('date')
     if date:
         tasks = tasks.filter(scheduled_date=date)
+
+    from django.db.models import Count
+    tasks = tasks.annotate(photo_count=Count('photos'))
 
     return Response(TaskListSerializer(tasks, many=True).data)
 
@@ -211,7 +214,8 @@ def backoffice_tasks(request):
     if not request.user.has_perm_code('backoffice_access'):
         return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
 
-    tasks = Task.objects.select_related('type', 'assigned_to').all()
+    from django.db.models import Count
+    tasks = Task.objects.select_related('type', 'assigned_to').annotate(photo_count=Count('photos'))
 
     is_admin = request.user.has_perm_code('manage_all_roles')
     if not is_admin:
@@ -284,7 +288,7 @@ def backoffice_create_task(request):
     # 3. Create the task
     serializer = TaskCreateSerializer(data=request.data, context={'request': request})
     if not serializer.is_valid():
-        return Response({'error': 'Datos inválidos', 'details': serializer.errors},
+        return Response({'error': 'Datos invalidos', 'details': serializer.errors},
                         status=status.HTTP_400_BAD_REQUEST)
 
     # Auto-generate google maps link
@@ -294,6 +298,16 @@ def backoffice_create_task(request):
 
     task = serializer.save(city_geofence=geofence, google_maps_link=maps_link)
     return Response(TaskDetailSerializer(task).data, status=status.HTTP_201_CREATED)
+
+
+# Valid status transitions for backoffice updates
+VALID_STATUS_TRANSITIONS = {
+    'pending': ['pending', 'rescheduled'],
+    'rescheduled': ['pending', 'rescheduled'],
+    'in_progress': ['in_progress', 'rescheduled'],
+    'completed': ['completed'],
+    'rejected': ['rejected'],
+}
 
 
 @api_view(['PATCH'])
@@ -308,11 +322,12 @@ def backoffice_update_task(request, task_id):
     except Task.DoesNotExist:
         return Response({'error': 'Tarea no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Fields that can be freely updated (status excluded — handled separately with validation)
     allowed_fields = [
         'scheduled_date', 'start_time', 'end_time', 'address',
         'latitude', 'longitude', 'client_name', 'client_dni',
         'placa', 'marca', 'modelo', 'color', 'vehicle_type',
-        'metadata', 'observations', 'status',
+        'metadata', 'observations',
     ]
 
     changed = []
@@ -320,6 +335,25 @@ def backoffice_update_task(request, task_id):
         if field in request.data:
             setattr(task, field, request.data[field])
             changed.append(field)
+
+    # Status change requires validation against allowed transitions
+    if 'status' in request.data:
+        new_status = request.data['status']
+        valid_choices = [choice[0] for choice in Task.STATUS_CHOICES]
+        if new_status not in valid_choices:
+            return Response(
+                {'error': f'Estado no valido. Opciones: {", ".join(valid_choices)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        allowed_next = VALID_STATUS_TRANSITIONS.get(task.status, [])
+        if new_status not in allowed_next:
+            return Response(
+                {'error': f'No se puede cambiar el estado de "{task.status}" a "{new_status}". '
+                          f'Transiciones permitidas: {", ".join(allowed_next)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        task.status = new_status
+        changed.append('status')
 
     # Allow reassigning operario
     if 'assigned_to_id' in request.data:
@@ -421,7 +455,7 @@ def dashboard_metrics(request):
     if not request.user.has_perm_code('backoffice_access'):
         return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
 
-    from django.db.models import Count, Avg, F, Q, ExpressionWrapper, DurationField
+    from django.db.models import Count, Avg, F, Q, ExpressionWrapper, DurationField, FloatField
     from django.db.models.functions import TruncDate
     from users.models import SupervisorAssignment
     import datetime
@@ -467,7 +501,8 @@ def dashboard_metrics(request):
     )
 
     # --- Operario ranking (last 30 days) ---
-    ranking = list(
+    # Single annotated queryset for counts — avoids N+1
+    ranking_qs = list(
         tasks.filter(completed_at__date__gte=month_ago, status='completed')
         .values(
             'assigned_to__id',
@@ -482,28 +517,48 @@ def dashboard_metrics(request):
         .order_by('-completed_count')[:10]
     )
 
-    # Add average completion time per operario
-    for r in ranking:
-        op_tasks = tasks.filter(
-            assigned_to_id=r['assigned_to__id'],
+    # Get total assigned per operario in a single query
+    op_ids = [r['assigned_to__id'] for r in ranking_qs]
+    total_assigned_map = dict(
+        tasks.filter(assigned_to_id__in=op_ids, scheduled_date__gte=month_ago)
+        .values('assigned_to_id')
+        .annotate(total=Count('id'))
+        .values_list('assigned_to_id', 'total')
+    )
+
+    # Compute average completion time per operario using a single annotated queryset
+    # We use ExpressionWrapper to compute duration in seconds at DB level
+    duration_expr = ExpressionWrapper(
+        F('completed_at') - F('started_at'),
+        output_field=DurationField()
+    )
+    avg_duration_map = dict(
+        tasks.filter(
+            assigned_to_id__in=op_ids,
             status='completed',
             started_at__isnull=False,
             completed_at__isnull=False,
             completed_at__date__gte=month_ago,
         )
-        durations = []
-        for t in op_tasks:
-            if t.started_at and t.completed_at:
-                durations.append((t.completed_at - t.started_at).total_seconds())
-        r['avg_minutes'] = round(sum(durations) / len(durations) / 60, 1) if durations else None
-        r['total_assigned'] = tasks.filter(
-            assigned_to_id=r['assigned_to__id'],
-            scheduled_date__gte=month_ago,
-        ).count()
-        if r['total_assigned'] > 0:
-            r['efficiency'] = round(r['completed_count'] / r['total_assigned'] * 100, 1)
-        else:
-            r['efficiency'] = 0
+        .annotate(duration=duration_expr)
+        .values('assigned_to_id')
+        .annotate(avg_duration=Avg('duration'))
+        .values_list('assigned_to_id', 'avg_duration')
+    )
+
+    ranking = []
+    for r in ranking_qs:
+        op_id = r['assigned_to__id']
+        total = total_assigned_map.get(op_id, 0)
+        avg_td = avg_duration_map.get(op_id)
+        avg_minutes = round(avg_td.total_seconds() / 60, 1) if avg_td else None
+        efficiency = round(r['completed_count'] / total * 100, 1) if total > 0 else 0
+        ranking.append({
+            **r,
+            'avg_minutes': avg_minutes,
+            'total_assigned': total,
+            'efficiency': efficiency,
+        })
 
     # --- In-progress tasks list ---
     in_progress_tasks = TaskListSerializer(
