@@ -143,12 +143,12 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     'http://localhost:3000,http://localhost:5173,https://opps-app.leasyauto.com'
 ).split(',')
 
-# JWT token lifetime — secure production values
+# JWT token lifetime — long-lived for internal app (Google OAuth handles auth security)
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
-    'ROTATE_REFRESH_TOKENS': True,
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=365),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=365),
+    'ROTATE_REFRESH_TOKENS': False,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
