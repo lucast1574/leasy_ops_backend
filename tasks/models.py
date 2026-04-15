@@ -166,8 +166,14 @@ class Task(models.Model):
     vehicle_type = models.CharField(max_length=50, blank=True, default='')
 
     # Type-specific data (flexible JSON for fields that vary by type)
+    # Schema per task type:
+    #   gestiones:    { "management_type": "Prueba de Bloqueo / Desbloqueo|Pago servicio|..." }
+    #   notaria:      { "pickup_notary": "str", "delivery_notary": "str" }
+    #   traslado:     { "origin": "str", "destination": "str" }
+    #   conversion:   { "service_type": "GNV|GLP|Reversion", "location": "str (taller)" }
+    #   Any type may include: { "google_maps_link": "str" }
     metadata = models.JSONField(default=dict, blank=True,
-        help_text='Type-specific fields: notary names, management_type, service_type, etc.')
+        help_text='Type-specific fields per task type. See schema comments above.')
 
     # Execution timestamps
     started_at = models.DateTimeField(null=True, blank=True)
