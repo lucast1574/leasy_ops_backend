@@ -27,6 +27,25 @@ class City(models.Model):
         return f"{self.name}, {self.country.name}"
 
 
+class District(models.Model):
+    """
+    Districts / boroughs within a city.
+    Used for local search in MapPicker and analytics (tasks per district).
+    """
+    name = models.CharField(max_length=150)
+    city = models.ForeignKey(City, on_delete=models.CASCADE, related_name='districts')
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+
+    class Meta:
+        ordering = ['city__country__code', 'city__name', 'name']
+        unique_together = ('name', 'city')
+        verbose_name_plural = "Districts"
+
+    def __str__(self):
+        return f"{self.name}, {self.city.name}"
+
+
 class Permission(models.Model):
     codename = models.CharField(max_length=100, unique=True)
     description = models.CharField(max_length=255, blank=True)
@@ -150,4 +169,4 @@ class SupervisorAssignment(models.Model):
 
     def __str__(self):
         tag = ' [adopted]' if self.is_adopted else ''
-        return f"{self.supervisor.email} → {self.operario.email}{tag}"
+        return f"{self.supervisor.email} -> {self.operario.email}{tag}"

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Role, Permission, Country, City, UserLocation, SupervisorAssignment
+from .models import User, Role, Permission, Country, City, District, UserLocation, SupervisorAssignment
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -28,6 +28,15 @@ class CitySerializer(serializers.ModelSerializer):
     class Meta:
         model = City
         fields = ['id', 'name', 'country', 'latitude', 'longitude']
+
+
+class DistrictSerializer(serializers.ModelSerializer):
+    city_name = serializers.CharField(source='city.name', read_only=True)
+    country_code = serializers.CharField(source='city.country.code', read_only=True)
+
+    class Meta:
+        model = District
+        fields = ['id', 'name', 'city_name', 'country_code', 'latitude', 'longitude']
 
 
 class UserSerializer(serializers.ModelSerializer):

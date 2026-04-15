@@ -1,7 +1,8 @@
 from django.urls import path
 from .views import (
     google_auth, me, update_user_city, list_users, assign_role, update_user,
-    list_countries, list_cities, list_roles, check_user_status, set_location,
+    list_countries, list_cities, list_districts, list_roles, check_user_status,
+    set_location,
     tracking_locations, my_assignments, adoptable_operarios, adopt_operario,
     release_operario,
 )
@@ -29,5 +30,6 @@ urlpatterns = [
     # Public catalogs
     path('countries/', list_countries, name='list-countries'),
     path('cities/', list_cities, name='list-cities'),
+    path('districts/', list_districts, name='list-districts'),
     path('roles/', list_roles, name='list-roles'),
 ]
