@@ -155,7 +155,7 @@ SIMPLE_JWT = {
 # CSRF Trusted Origins (required for Django 4+ with HTTPS cross-origin requests)
 CSRF_TRUSTED_ORIGINS = os.environ.get(
     'CSRF_TRUSTED_ORIGINS',
-    'https://opps-app.leasyauto.com,https://main.dl2z89ezd85gw.amplifyapp.com'
+    'https://opps-app.leasyauto.com'
 ).split(',')
 
 # Para que las cookies funcionen tras el Load Balancer
