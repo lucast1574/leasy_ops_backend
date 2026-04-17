@@ -36,7 +36,7 @@ class TaskListSerializer(serializers.ModelSerializer):
             'id', 'type', 'status', 'main_status',
             'assigned_to',
             'scheduled_date', 'start_time', 'end_time',
-            'address', 'client_name', 'placa', 'marca', 'modelo',
+            'address', 'latitude', 'longitude', 'client_name', 'placa', 'marca', 'modelo',
             'started_at', 'completed_at', 'photo_count',
         ]
 
