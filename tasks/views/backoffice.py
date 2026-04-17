@@ -24,6 +24,12 @@ from ..selectors import visible_tasks_for, build_maps_link
 
 logger = logging.getLogger(__name__)
 
+# Task types that must have a real customer attached.
+# Process-type tasks (conversion, traslado, verificar_vehiculo, notaria,
+# gestiones) can be created without one since they represent internal
+# vehicle/administrative work rather than a customer-facing visit.
+REQUIRES_CLIENT = ('verificacion', 'recupero', 'entrega')
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -93,6 +99,18 @@ def backoffice_create_task(request):
         validate_task_assignment(request.user, operario, geofence)
     except TaskValidationError as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 2.5. Validate client_name is present for customer-facing task types.
+    # Process-type tasks (conversion, traslado, notaria, ...) don't need one.
+    type_slug = (request.data.get('type_slug') or '').strip()
+    if type_slug in REQUIRES_CLIENT:
+        client_name = (request.data.get('client_name') or '').strip()
+        if not client_name:
+            return Response(
+                {'error': 'El nombre del cliente es obligatorio para tareas de '
+                          'verificación, recupero y entrega.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     # 3. Create the task
     serializer = TaskCreateSerializer(data=request.data, context={'request': request})
