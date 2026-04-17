@@ -146,7 +146,7 @@ def backoffice_create_task(request):
 VALID_STATUS_TRANSITIONS = {
     'pending': ['pending', 'rescheduled'],
     'rescheduled': ['pending', 'rescheduled'],
-    'in_progress': ['in_progress', 'rescheduled'],
+    'in_progress': ['in_progress', 'rescheduled', 'pending'],
     'completed': ['completed'],
     'rejected': ['rejected'],
 }
@@ -269,7 +269,8 @@ def backoffice_reassign_task(request, task_id):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def backoffice_delete_task(request, task_id):
-    """Delete a task (only if pending)."""
+    """Delete a task. Any status is allowed — the backoffice user takes
+    responsibility via the confirmation dialog in the frontend."""
     if not request.user.has_perm_code('backoffice_access'):
         return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -277,10 +278,6 @@ def backoffice_delete_task(request, task_id):
         task = Task.objects.get(id=task_id)
     except Task.DoesNotExist:
         return Response({'error': 'Tarea no encontrada'}, status=status.HTTP_404_NOT_FOUND)
-
-    if task.status != 'pending':
-        return Response({'error': 'Solo se pueden eliminar tareas pendientes'},
-                        status=status.HTTP_400_BAD_REQUEST)
 
     task.delete()
     return Response({'status': 'ok'})
