@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 # vehicle/administrative work rather than a customer-facing visit.
 REQUIRES_CLIENT = ('verificacion', 'recupero', 'entrega')
 
+# Conversion tasks must specify the service type upfront (from backoffice).
+# The operario sees it read-only in the mobile app.
+CONVERSION_SERVICE_TYPES = ('GNV', 'Revisión Técnica')
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -109,6 +113,17 @@ def backoffice_create_task(request):
             return Response(
                 {'error': 'El nombre del cliente es obligatorio para tareas de '
                           'verificación, recupero y entrega.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    # 2.6. Conversion tasks require a service type in metadata.
+    if type_slug == 'conversion':
+        metadata = request.data.get('metadata') or {}
+        svc_type = (metadata.get('service_type') or '').strip()
+        if svc_type not in CONVERSION_SERVICE_TYPES:
+            return Response(
+                {'error': f'Tipo de servicio obligatorio para conversión. '
+                          f'Opciones: {", ".join(CONVERSION_SERVICE_TYPES)}.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

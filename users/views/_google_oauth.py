@@ -2,8 +2,8 @@
 Google OAuth helpers — shared by mobile (id_token flow) and backoffice (auth code flow).
 
 Extracted from the old monolithic users/views.py as part of the module split.
-Logic is byte-identical — only the surrounding imports were adjusted for the new
-module location (and the leading underscore was dropped from public helpers).
+Contents are byte-identical (logic unchanged) — only the surrounding imports
+were adjusted for the new module location.
 """
 import os
 import logging
