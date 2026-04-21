@@ -21,6 +21,7 @@ from ..validators import (
     TaskValidationError,
 )
 from ..selectors import visible_tasks_for, build_maps_link
+from ..s3 import generate_download_url
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +153,14 @@ VALID_STATUS_TRANSITIONS = {
 }
 
 
-@api_view(['PATCH'])
+@api_view(['GET', 'PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
-def backoffice_update_task(request, task_id):
-    """Update a task from backoffice."""
+def backoffice_task_detail(request, task_id):
+    """
+    GET    → full task detail (with photos + presigned download URLs + result).
+    PATCH  → update task fields / status.
+    DELETE → remove task permanently.
+    """
     if not request.user.has_perm_code('backoffice_access'):
         return Response({'error': 'No tienes permiso'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -163,6 +168,23 @@ def backoffice_update_task(request, task_id):
         task = Task.objects.get(id=task_id)
     except Task.DoesNotExist:
         return Response({'error': 'Tarea no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+    # ---- GET: return full detail with photos (presigned URLs) and result ----
+    if request.method == 'GET':
+        task = Task.objects.select_related(
+            'type', 'assigned_to', 'assigned_by', 'result'
+        ).prefetch_related('photos').get(id=task_id)
+        data = TaskDetailSerializer(task).data
+        for photo in data.get('photos', []):
+            photo['download_url'] = generate_download_url(photo['s3_key'])
+        return Response(data)
+
+    # ---- DELETE: remove task ----
+    if request.method == 'DELETE':
+        task.delete()
+        return Response({'status': 'ok'})
+
+    # ---- PATCH: update fields (below) ----
 
     # Fields that can be freely updated (status excluded — handled separately with validation)
     allowed_fields = [

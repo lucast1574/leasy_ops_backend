@@ -19,7 +19,7 @@ from .mobile import (
     request_upload_url, confirm_upload, submit_task, reschedule_task,
 )
 from .backoffice import (
-    backoffice_tasks, backoffice_create_task, backoffice_update_task,
+    backoffice_tasks, backoffice_create_task, backoffice_task_detail,
     backoffice_reassign_task, backoffice_delete_task,
 )
 from .dashboard import dashboard_metrics
@@ -30,7 +30,7 @@ __all__ = [
     'my_tasks', 'task_detail', 'start_task',
     'request_upload_url', 'confirm_upload', 'submit_task', 'reschedule_task',
     # backoffice
-    'backoffice_tasks', 'backoffice_create_task', 'backoffice_update_task',
+    'backoffice_tasks', 'backoffice_create_task', 'backoffice_task_detail',
     'backoffice_reassign_task', 'backoffice_delete_task',
     # dashboard
     'dashboard_metrics',
