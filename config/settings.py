@@ -170,8 +170,12 @@ X_FRAME_OPTIONS = 'DENY'
 SESSION_COOKIE_HTTPONLY = True
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SECURE_REDIRECT_EXEMPT = [r'^health/']
+    # SSL redirect is handled by the ALB listener rules, not Django.
+    # Django sits behind the ALB and only receives plain HTTP traffic
+    # internally, so SECURE_SSL_REDIRECT must stay off — otherwise the
+    # ELB health checker (which hits /health/ over HTTP without
+    # X-Forwarded-Proto) gets a 301 and the task is marked unhealthy.
+    SECURE_SSL_REDIRECT = False
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
