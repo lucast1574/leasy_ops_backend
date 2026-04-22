@@ -105,8 +105,7 @@ def backoffice_create_task(request):
     except TaskValidationError as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2.5. Validate client_name is present for customer-facing task types.
-    # Process-type tasks (conversion, traslado, notaria, ...) don't need one.
+    # 2.5. Validate client_name and vehicle data for customer-facing task types.
     type_slug = (request.data.get('type_slug') or '').strip()
     if type_slug in REQUIRES_CLIENT:
         client_name = (request.data.get('client_name') or '').strip()
@@ -116,6 +115,9 @@ def backoffice_create_task(request):
                           'verificación, recupero y entrega.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # For 'verificacion', only client_name is strictly mandatory in this context.
+        pass
 
     # 2.6. Conversion tasks require a service type in metadata.
     if type_slug == 'conversion':
