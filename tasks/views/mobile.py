@@ -189,15 +189,39 @@ def submit_task(request, task_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def reschedule_task(request, task_id):
-    """Reschedule a task (e.g. nobody home during verification)."""
+    """
+    Reschedule a task by marking the current one as 'rescheduled' (finished)
+    and creating a new cloned task for the next day.
+    """
     try:
         task = Task.objects.get(id=task_id, assigned_to=request.user)
     except Task.DoesNotExist:
         return Response({'error': 'Tarea no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
+    if task.status in ('completed', 'rejected', 'rescheduled'):
+        return Response({'error': 'Esta tarea ya está finalizada'}, status=status.HTTP_400_BAD_REQUEST)
+
     reason = request.data.get('reason', '')
+    
+    # 1. Mark original task as finished with 'rescheduled' status
     task.status = 'rescheduled'
     task.observations = reason if reason else task.observations
-    task.save(update_fields=['status', 'observations', 'updated_at'])
+    task.completed_at = timezone.now()
+    task.save(update_fields=['status', 'observations', 'completed_at', 'updated_at'])
 
-    return Response(TaskDetailSerializer(task).data)
+    # 2. Create a NEW pending task for the next day
+    from datetime import timedelta
+    next_day = task.scheduled_date + timedelta(days=1)
+    
+    # Clone logic
+    new_task = Task.objects.get(id=task_id) # Reload to clone fresh
+    new_task.pk = None
+    new_task.id = None
+    new_task.status = 'pending'
+    new_task.scheduled_date = next_day
+    new_task.observations = f"Reprogramación automática de tarea #{task_id}. {reason}"
+    new_task.started_at = None
+    new_task.completed_at = None
+    new_task.save()
+
+    return Response(TaskDetailSerializer(new_task).data)

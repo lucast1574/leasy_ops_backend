@@ -108,7 +108,7 @@ class Task(models.Model):
     STATUS_TO_MAIN = {
         'pending': 'pending',
         'in_progress': 'in_progress',
-        'rescheduled': 'in_progress',
+        'rescheduled': 'completed',
         'completed': 'completed',
         'rejected': 'completed',
     }
