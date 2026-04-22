@@ -150,7 +150,7 @@ VALID_STATUS_TRANSITIONS = {
     'pending': ['pending', 'rescheduled'],
     'rescheduled': ['pending', 'rescheduled'],
     'in_progress': ['in_progress', 'rescheduled', 'pending'],
-    'completed': ['completed'],
+    'completed': ['completed', 'rescheduled'],
     'rejected': ['rejected'],
 }
 
