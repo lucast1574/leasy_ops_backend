@@ -37,7 +37,7 @@ class TaskListSerializer(serializers.ModelSerializer):
             'assigned_to',
             'scheduled_date', 'start_time', 'end_time',
             'address', 'latitude', 'longitude', 'client_name', 'placa', 'marca', 'modelo',
-            'started_at', 'completed_at', 'photo_count',
+            'metadata', 'started_at', 'completed_at', 'photo_count',
         ]
 
     def get_photo_count(self, obj):

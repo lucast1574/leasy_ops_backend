@@ -167,10 +167,14 @@ class Task(models.Model):
 
     # Type-specific data (flexible JSON for fields that vary by type)
     # Schema per task type:
-    #   gestiones:    { "management_type": "Prueba de Bloqueo / Desbloqueo|Pago servicio|..." }
+    #   gestiones:    { 
+    #                   "management_type": "Prueba de Bloqueo / Desbloqueo|Pago servicio|...",
+    #                   "fine_type": "SAT|Multa municipalidad|...",
+    #                   "selected_municipality": "Antioquia|..."
+    #                 }
     #   notaria:      { "pickup_notary": "str", "delivery_notary": "str" }
     #   traslado:     { "origin": "str", "destination": "str" }
-    #   conversion:   { "service_type": "GNV|GLP|Reversion", "location": "str (taller)" }
+    #   conversion:   { "service_type": "GNV|GLP|Reversion" }
     #   Any type may include: { "google_maps_link": "str" }
     metadata = models.JSONField(default=dict, blank=True,
         help_text='Type-specific fields per task type. See schema comments above.')
