@@ -60,6 +60,6 @@ RUN SECRET_KEY='dummy-key-for-build' python manage.py collectstatic --noinput \
 # Run as non-root for the rest of the container's life.
 USER django
 
-EXPOSE 8000
+EXPOSE 4000
 
 CMD ["/app/entrypoint.sh"]
