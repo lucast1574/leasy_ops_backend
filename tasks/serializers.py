@@ -90,8 +90,8 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         slug_field='slug', queryset=TaskType.objects.all(), source='type'
     )
     assigned_to_id = serializers.IntegerField(write_only=True)
-    latitude = serializers.FloatField(required=True)
-    longitude = serializers.FloatField(required=True)
+    latitude = serializers.FloatField(required=False, allow_null=True)
+    longitude = serializers.FloatField(required=False, allow_null=True)
 
     class Meta:
         model = Task
