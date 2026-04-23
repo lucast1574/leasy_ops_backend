@@ -141,7 +141,20 @@ def backoffice_create_task(request):
     lng = float(request.data.get('longitude'))
     maps_link = build_maps_link(lat, lng, request.data.get('google_maps_link', ''))
 
-    task = serializer.save(city_geofence=geofence, google_maps_link=maps_link)
+    # Auto-generate second link for metadata if applicable (e.g. Notaría delivery)
+    metadata = request.data.get('metadata') or {}
+    d_lat = metadata.get('delivery_latitude')
+    d_lng = metadata.get('delivery_longitude')
+    if d_lat is not None and d_lng is not None:
+        metadata['delivery_google_maps_link'] = build_maps_link(
+            d_lat, d_lng, metadata.get('delivery_google_maps_link', '')
+        )
+
+    task = serializer.save(
+        city_geofence=geofence, 
+        google_maps_link=maps_link,
+        metadata=metadata
+    )
     return Response(TaskDetailSerializer(task).data, status=status.HTTP_201_CREATED)
 
 
