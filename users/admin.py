@@ -11,7 +11,7 @@ class CountryAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'code', 'domain_suffix')
     search_fields = ('name', 'code', 'domain_suffix')
 
-
+#check
 @admin.register(City)
 class CityAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'country')
