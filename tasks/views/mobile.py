@@ -86,6 +86,9 @@ def start_task(request, task_id):
     except Task.DoesNotExist:
         return Response({'error': 'Tarea no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
+    if task.status == 'in_progress':
+        return Response(TaskDetailSerializer(task).data)
+
     if task.status not in ('pending', 'rescheduled'):
         return Response({'error': f'No se puede iniciar una tarea con estado "{task.status}"'},
                         status=status.HTTP_400_BAD_REQUEST)
