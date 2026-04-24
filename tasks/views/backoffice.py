@@ -83,8 +83,13 @@ def backoffice_create_task(request):
     # 1. Validate geofence
     lat = request.data.get('latitude')
     lng = request.data.get('longitude')
+    type_slug = (request.data.get('type_slug') or '').strip()
+
+    # Location is optional ONLY for conversion tasks
+    location_required = type_slug != 'conversion'
+
     try:
-        geofence = validate_task_location(lat, lng)
+        geofence = validate_task_location(lat, lng, required=location_required)
     except TaskValidationError as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -106,7 +111,6 @@ def backoffice_create_task(request):
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     # 2.5. Validate client_name and vehicle data for customer-facing task types.
-    type_slug = (request.data.get('type_slug') or '').strip()
     if type_slug in REQUIRES_CLIENT:
         client_name = (request.data.get('client_name') or '').strip()
         if not client_name:
@@ -136,10 +140,13 @@ def backoffice_create_task(request):
         return Response({'error': 'Datos invalidos', 'details': serializer.errors},
                         status=status.HTTP_400_BAD_REQUEST)
 
-    # Auto-generate google maps link
-    lat = float(request.data.get('latitude'))
-    lng = float(request.data.get('longitude'))
-    maps_link = build_maps_link(lat, lng, request.data.get('google_maps_link', ''))
+    # Auto-generate google maps link if coordinates are present
+    maps_link = request.data.get('google_maps_link', '')
+    if lat is not None and lng is not None:
+        try:
+            maps_link = build_maps_link(float(lat), float(lng), maps_link)
+        except (ValueError, TypeError):
+            pass
 
     # Auto-generate second link for metadata if applicable (e.g. Notaría delivery)
     metadata = request.data.get('metadata') or {}

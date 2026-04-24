@@ -16,15 +16,17 @@ class TaskValidationError(Exception):
     pass
 
 
-def validate_task_location(latitude, longitude):
+def validate_task_location(latitude, longitude, required=True):
     """
     Validate that the coordinates fall within an active geofence.
     Returns the CityGeofence if valid, raises TaskValidationError otherwise.
     """
     if latitude is None or longitude is None:
-        raise TaskValidationError(
-            'Latitud y longitud son obligatorios. Toda tarea debe tener ubicación.'
-        )
+        if required:
+            raise TaskValidationError(
+                'Latitud y longitud son obligatorios. Toda tarea debe tener ubicación.'
+            )
+        return None
 
     try:
         lat = float(latitude)
@@ -51,6 +53,30 @@ def validate_task_assignment(assigner, operario, geofence):
     - Supervisor: can only assign within their own country
     - Admin: can assign in any country, but operario must still match the geofence city
     """
+    if geofence is None:
+        # If no geofence (e.g. Conversion task), we just check basic assignment rules.
+        # Supervisor can only assign to operarios in their same country.
+        is_admin = assigner.has_perm_code('manage_all_roles')
+        if not is_admin:
+            if assigner.country_id != operario.country_id:
+                raise TaskValidationError(
+                    f'No puedes asignar tareas a operarios de otro país. '
+                    f'Tu país es {assigner.country.name if assigner.country else "—"} '
+                    f'y el operario es de {operario.country.name if operario.country else "—"}.'
+                )
+            
+            # Check if supervisor has the operario assigned
+            from users.models import SupervisorAssignment
+            has_assignment = SupervisorAssignment.objects.filter(
+                supervisor=assigner,
+                operario=operario,
+            ).exists()
+            if not has_assignment:
+                raise TaskValidationError(
+                    f'No tienes asignado al operario {operario.first_name} {operario.last_name}.'
+                )
+        return
+
     geofence_city = geofence.city
     geofence_country = geofence_city.country
 
