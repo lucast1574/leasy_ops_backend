@@ -5,6 +5,7 @@ echo "=== Leasy Ops Backend Startup ==="
 
 echo "[1/7] Running migrations..."
 python manage.py migrate --noinput
+python manage.py migrate tasks --noinput
 
 echo "[2/7] Seeding database..."
 python manage.py seed_db
