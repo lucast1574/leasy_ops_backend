@@ -15,7 +15,7 @@ with no changes.
 """
 
 from .mobile import (
-    my_tasks, task_detail, start_task,
+    my_tasks, task_detail, start_task, update_progress,
     request_upload_url, confirm_upload, submit_task, reschedule_task,
 )
 from .backoffice import (
@@ -27,7 +27,7 @@ from .catalogs import list_task_types
 
 __all__ = [
     # mobile
-    'my_tasks', 'task_detail', 'start_task',
+    'my_tasks', 'task_detail', 'start_task', 'update_progress',
     'request_upload_url', 'confirm_upload', 'submit_task', 'reschedule_task',
     # backoffice
     'backoffice_tasks', 'backoffice_create_task', 'backoffice_task_detail',
