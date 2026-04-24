@@ -165,6 +165,12 @@ class Task(models.Model):
     color = models.CharField(max_length=50, blank=True, default='')
     vehicle_type = models.CharField(max_length=50, blank=True, default='')
 
+    # Progress tracking (for resuming tasks)
+    current_step = models.PositiveSmallIntegerField(default=0,
+        help_text='Last completed step index in the mobile app flow')
+    draft_data = models.JSONField(default=dict, blank=True,
+        help_text='Partially filled form data before final submission')
+
     # Type-specific data (flexible JSON for fields that vary by type)
     # Schema per task type:
     #   gestiones:    { 

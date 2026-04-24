@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    my_tasks, task_detail, start_task,
+    my_tasks, task_detail, start_task, update_progress,
     request_upload_url, confirm_upload, submit_task, reschedule_task,
     backoffice_tasks, backoffice_create_task, backoffice_task_detail,
     backoffice_reassign_task, backoffice_delete_task,
@@ -12,6 +12,7 @@ urlpatterns = [
     path('', my_tasks, name='my-tasks'),
     path('<int:task_id>/', task_detail, name='task-detail'),
     path('<int:task_id>/start/', start_task, name='start-task'),
+    path('<int:task_id>/progress/', update_progress, name='update-progress'),
     path('<int:task_id>/photos/request-url/', request_upload_url, name='request-upload-url'),
     path('<int:task_id>/photos/confirm/', confirm_upload, name='confirm-upload'),
     path('<int:task_id>/submit/', submit_task, name='submit-task'),

@@ -14,6 +14,7 @@ from ..models import Task, TaskPhoto, TaskResult
 from ..serializers import (
     TaskListSerializer, TaskDetailSerializer,
     TaskSubmitSerializer, TaskPhotoSerializer,
+    TaskProgressSerializer,
 )
 from ..s3 import generate_upload_url, generate_download_url
 
@@ -148,6 +149,22 @@ def confirm_upload(request, task_id):
     )
 
     return Response(TaskPhotoSerializer(photo).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_progress(request, task_id):
+    """Save intermediate progress (current step and draft data)."""
+    try:
+        task = Task.objects.get(id=task_id, assigned_to=request.user)
+    except Task.DoesNotExist:
+        return Response({'error': 'Tarea no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = TaskProgressSerializer(task, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])

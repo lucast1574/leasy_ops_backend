@@ -38,6 +38,7 @@ class TaskListSerializer(serializers.ModelSerializer):
             'scheduled_date', 'start_time', 'end_time',
             'address', 'latitude', 'longitude', 'client_name', 'placa', 'marca', 'modelo',
             'metadata', 'started_at', 'completed_at', 'photo_count',
+            'current_step', 'draft_data',
         ]
 
     def get_photo_count(self, obj):
@@ -70,6 +71,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             'client_name', 'client_dni',
             'placa', 'marca', 'modelo', 'color', 'vehicle_type',
             'metadata', 'observations',
+            'current_step', 'draft_data',
             'started_at', 'completed_at',
             'photos', 'result',
             'created_at', 'updated_at',
@@ -129,3 +131,9 @@ class TaskSubmitSerializer(serializers.Serializer):
     result_data = serializers.JSONField(required=False, default=dict)
     checklist_data = serializers.JSONField(required=False, default=dict)
     observations = serializers.CharField(required=False, default='', allow_blank=True)
+
+class TaskProgressSerializer(serializers.ModelSerializer):
+    """For saving intermediate progress (step + draft data)."""
+    class Meta:
+        model = Task
+        fields = ['current_step', 'draft_data']
